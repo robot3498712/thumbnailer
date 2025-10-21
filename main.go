@@ -60,10 +60,8 @@ var (
 	}
 
 	// garbage collector: more frequent memory release
-	gcLastRequestTime = time.Now()
-	gcInterval = 10 * time.Second
-	gcRequestCounter int32
-	gcEveryN int32 = 100
+	gc atomic.Bool
+	gcRequestCounter uint32
 )
 
 type Config struct {
@@ -730,8 +728,8 @@ func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 
 	// keep memory usage reasonable
 	defer func() {
-		gcLastRequestTime = time.Now()
-		if atomic.AddInt32(&gcRequestCounter, 1) % gcEveryN == 0 {
+		gc.Store(true)
+		if atomic.AddUint32(&gcRequestCounter, 1) % 50 == 0 {
 			go runtime.GC()
 		}
 	}()
@@ -756,10 +754,10 @@ func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func startGCWatcher() {
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Second * 10)
 	go func() {
 		for range ticker.C {
-			if time.Since(gcLastRequestTime) > gcInterval {
+			if gc.Swap(false) {
 				runtime.GC()
 			}
 		}
