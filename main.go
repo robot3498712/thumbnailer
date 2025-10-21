@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -57,6 +58,12 @@ var (
 	fileFormats = []string{
 		"jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "pdf", "epub", "mobi", "azw3",
 	}
+
+	// garbage collector: more frequent memory release
+	gcLastRequestTime = time.Now()
+	gcInterval = 10 * time.Second
+	gcRequestCounter int32
+	gcEveryN int32 = 100
 )
 
 type Config struct {
@@ -721,6 +728,14 @@ func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// keep memory usage reasonable
+	defer func() {
+		gcLastRequestTime = time.Now()
+		if atomic.AddInt32(&gcRequestCounter, 1) % gcEveryN == 0 {
+			go runtime.GC()
+		}
+	}()
+
 	ext := strings.ToLower(filepath.Ext(fileInfos[imageID].Path))
 	switch ext {
 	case ".jpg", ".jpeg", ".webp", ".bmp", ".heic", ".pdf", ".epub", ".mobi", ".azw3":
@@ -738,6 +753,17 @@ func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Unsupported image format", http.StatusUnsupportedMediaType)
 	}
+}
+
+func startGCWatcher() {
+	ticker := time.NewTicker(time.Second)
+	go func() {
+		for range ticker.C {
+			if time.Since(gcLastRequestTime) > gcInterval {
+				runtime.GC()
+			}
+		}
+	}()
 }
 
 func main() {
@@ -856,6 +882,8 @@ func main() {
 		<-c
 		os.Exit(0)
 	}()
+
+	startGCWatcher()
 
 	fmt.Printf("Server running on http://%s:%d\nCtrl+c to exit\n", ip, cfg.port)
 	http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.ip, cfg.port), nil)
