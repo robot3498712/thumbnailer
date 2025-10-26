@@ -1,6 +1,6 @@
 # thumbnailer cli
 
-## [0.1.1] (2025-10-18)
+## [0.1.2] (2025-10-26)
 
 Localhosted web app for displaying thumbnails in a grid layout.
 
@@ -15,22 +15,30 @@ Localhosted web app for displaying thumbnails in a grid layout.
 
 ### Manual
 
-* ./thumbnailer [<flags>] <root path containing media>
-				-h for help
+```
+./thumbnailer [<flags>] <root path containing media>
+	-h for help
+```
 
 * Refer to server info printed and open link in browser
 
 * Click thumbnail to open lightbox
 
-* Key bindings
-[lightbox]
-**<-**			previous
-**->**			next
-**<any>**		exit lightbox
-**mouseLeft**	open image in new tab
-[grid]
-**mouseRight**	open file in native app
+#### Key bindings
+##### Lightbox
+```
+<-		previous
 
+->		next
+
+any		exit lightbox
+
+mouseLeft	open image in new tab
+```
+##### Grid
+```
+mouseRight	open file in native app
+```
 
 ### Future plans, pending features & issues
 
@@ -39,24 +47,24 @@ Localhosted web app for displaying thumbnails in a grid layout.
 * support for djvu
 
 * caching flag
-	for example using sqlite
+	* for example using sqlite
 
 * add more filetypes
-	https://github.com/h2non/filetype.py
+	* https://github.com/h2non/filetype.py
 
 * consider config defaults for ip:port and such
 
 * color scheme; day/night mode
 
 * [postponed] mobi/pdf: suppress error, warning and notice spam via mupdf lib
-	https://pkg.go.dev/github.com/gen2brain/go-fitz#section-readme
+	* https://pkg.go.dev/github.com/gen2brain/go-fitz#section-readme
 
 * [postponed] mobi appears to always miss the cover image
-	https://en.wikipedia.org/wiki/Comparison_of_e-book_formats#Microsoft_LIT
+	* https://en.wikipedia.org/wiki/Comparison_of_e-book_formats#Microsoft_LIT
 
 * [postponed] better support for Kindle formats (azw3)
-	https://github.com/kevinhendricks/KindleUnpack
-	https://stackoverflow.com/questions/5379565/kindle-periodical-format
+	* https://github.com/kevinhendricks/KindleUnpack
+	* https://stackoverflow.com/questions/5379565/kindle-periodical-format
 
 
 ### License

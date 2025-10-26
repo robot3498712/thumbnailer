@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"image"
-	"image/gif"
+	_ "image/gif"
 	"image/jpeg"
 	"image/png"
 
@@ -539,10 +539,11 @@ func generateThumbnail(imageID int) (image.Image, error) {
 			if err != nil {
 				return nil, err
 			}
+			return img, nil
 		} else {
 			img, _, err = image.Decode(file)
-				if err != nil {
-					return nil, err
+			if err != nil {
+				return nil, err
 			}
 		}
 
@@ -566,7 +567,7 @@ func open(url string) error {
 		args = []string{"/c", "start"}
 	case "darwin":
 		cmd = "open"
-	default: // "linux", "freebsd", "openbsd", "netbsd"
+	default: // "linux", "*bsd"
 		cmd = "xdg-open"
 	}
 	args = append(args, url)
@@ -734,23 +735,8 @@ func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	ext := strings.ToLower(filepath.Ext(fileInfos[imageID].Path))
-	switch ext {
-	case ".jpg", ".jpeg", ".webp", ".bmp", ".heic", ".pdf", ".epub", ".mobi", ".azw3":
-		w.Header().Set("Content-Type", "image/jpeg")
-		jpeg.Encode(w, thumbnail, nil)
-	case ".png":
-		w.Header().Set("Content-Type", "image/png")
-		png.Encode(w, thumbnail)
-	case ".gif":
-		w.Header().Set("Content-Type", "image/gif")
-		gif.Encode(w, thumbnail, nil)
-	case ".avif":
-		w.Header().Set("Content-Type", "image/avif")
-		avif.Encode(w, thumbnail)
-	default:
-		http.Error(w, "Unsupported image format", http.StatusUnsupportedMediaType)
-	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	jpeg.Encode(w, thumbnail, nil)
 }
 
 func startGCWatcher() {
@@ -789,9 +775,14 @@ func main() {
 		os.Exit(0)
 	}
 	if cfg.verbose {
+		_avif := "wasm"
+		if avif.Dynamic() == nil {
+			_avif = "shared"
+		}
 		fmt.Printf("thumbnailer: %v\n", version)
 		fmt.Printf("FzVersion: %v\n", fitz.FzVersion)
 		fmt.Printf("libheif: %v\n", libheif.GetVersion())
+		fmt.Printf("libavif: %v\n", _avif)
 		os.Exit(0)
 	}
 	if cfg.width != 250 {
