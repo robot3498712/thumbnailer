@@ -539,7 +539,6 @@ func generateThumbnail(imageID int) (image.Image, error) {
 			if err != nil {
 				return nil, err
 			}
-			return img, nil
 		} else {
 			img, _, err = image.Decode(file)
 			if err != nil {
