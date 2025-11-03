@@ -1,6 +1,6 @@
 # thumbnailer cli
 
-## [0.1.2] (2025-10-26)
+## [0.1.3] (2025-11-02)
 
 Localhosted web app for displaying thumbnails in a grid layout.
 
@@ -31,6 +31,14 @@ Localhosted web app for displaying thumbnails in a grid layout.
 
 ->		next
 
+l		rotate left
+
+r		rotate right
+
++/wheel	zoom in
+
+-/wheel	zoom out
+
 any		exit lightbox
 
 mouseLeft	open image in new tab
@@ -41,6 +49,8 @@ mouseRight	open file in native app
 ```
 
 ### Future plans, pending features & issues
+
+* optimizations for touch devices, such as lightbox and zoom
 
 * search / index via menu
 

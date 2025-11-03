@@ -77,6 +77,7 @@ type Config struct {
 	version bool
 	verbose bool
 	width   uint
+	fit		bool
 }
 
 type ContextData struct {
@@ -767,6 +768,7 @@ func main() {
 	flag.BoolVar(&cfg.version, "v", false, "print version")
 	flag.BoolVar(&cfg.verbose, "vv", false, "debug print version")
 	flag.UintVar(&cfg.width, "w", 250, "thumbnail width in pixels")
+	flag.BoolVar(&cfg.fit, "fit", true, "fit within viewport (vertical crop)")
 	flag.Parse()
 
 	if cfg.version {
@@ -812,7 +814,7 @@ func main() {
 <style type="text/css">%s</style>
 <script>%s</script>
 </head>
-<body data-width="%d">
+<body data-width="%d" data-fit="%t">
 <div class="menu%s" id="menu">&#9776;</div>
 <ul class="menu-list" id="menuList"></ul>
 <div class="menu-overlay" id="menuOverlay"></div>
@@ -821,7 +823,7 @@ func main() {
 	<div id="lightboxLoading"><p>Loading...</p></div>
 	<img id="lightboxImage" src="" />
 </div>
-`, cssContent, jsContent, cfg.width, cssHidden)
+`, cssContent, jsContent, cfg.width, cfg.fit, cssHidden)
 		w.Write([]byte(htmlContent))
 
 		first := true
