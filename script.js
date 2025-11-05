@@ -15,6 +15,14 @@ document.addEventListener("DOMContentLoaded", ev => {
 	const lightboxLoading = document.getElementById('lightboxLoading');
 	const lightboxClose = document.getElementById('lightboxClose');
 
+	// touch device
+	let lastTouchX = 0;
+	let lastTouchY = 0;
+	let isPanning = false;
+	let pinchStartDist = 0;
+	let touchEndX = 0;
+	const swipeThreshold = 100;
+
 	// transformers
 	let rot = [];
 	let scale = 1;
@@ -265,6 +273,79 @@ document.addEventListener("DOMContentLoaded", ev => {
 			scale = Math.max(scale - scaleStep, minScale);
 		}
 		transform(false, lightboxImage.dataset.id);
+	});
+
+	// touch device
+	lightbox.addEventListener("touchstart", ev => {
+		if (lightbox.style.display !== "flex") return;
+
+		if (ev.touches.length === 1) {
+			if (scale > 1) {
+				isPanning = true;
+				lastTouchX = ev.touches[0].clientX;
+				lastTouchY = ev.touches[0].clientY;
+			} else { // swipe nav
+				lastTouchX = ev.touches[0].screenX;
+			}
+		} else {
+			isPanning = false; // multi-touch
+		}
+	});
+
+	lightbox.addEventListener("touchmove", ev => {
+		if (lightbox.style.display !== "flex") return;
+
+		if (ev.touches.length === 1 && isPanning) {
+			ev.preventDefault();
+			const touch = ev.touches[0];
+			const dx = touch.clientX - lastTouchX;
+			const dy = touch.clientY - lastTouchY;
+
+			translateX += dx;
+			translateY += dy;
+
+			transform(false, lightboxImage.dataset.id);
+			lastTouchX = touch.clientX;
+			lastTouchY = touch.clientY;
+
+		} else if (ev.touches.length === 2) { // pinch zoom
+			ev.preventDefault();
+			const [t1, t2] = ev.touches;
+			const dx = t2.clientX - t1.clientX;
+			const dy = t2.clientY - t1.clientY;
+			const dist = Math.sqrt(dx * dx + dy * dy);
+
+			if (!pinchStartDist) {
+				pinchStartDist = dist;
+				return;
+			}
+
+			const scaleChange = dist / pinchStartDist;
+			scale = Math.min(Math.max(scale * scaleChange, minScale), maxScale);
+
+			transform(false, lightboxImage.dataset.id);
+			pinchStartDist = dist;
+		}
+	});
+
+	lightbox.addEventListener("touchend", ev => {
+		if (scale <= 1 && ev.changedTouches.length === 1) { // swipe nav
+			const touchEndX = ev.changedTouches[0].screenX;
+			const diffX = touchEndX - lastTouchX;
+			if (Math.abs(diffX) >= swipeThreshold) {
+				const key = diffX < 0 ? "ArrowRight" : "ArrowLeft";
+				document.dispatchEvent(new KeyboardEvent("keydown", { key }));
+			}
+		}
+		// reset pan & pinch states
+		if (ev.touches.length === 0) {
+			isPanning = false;
+			pinchStartDist = 0;
+		} else if (ev.touches.length === 1 && scale > 1) {
+			lastTouchX = ev.touches[0].clientX;
+			lastTouchY = ev.touches[0].clientY;
+			isPanning = true;
+		}
 	});
 
 	// pan (with rotation support)

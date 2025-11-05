@@ -50,8 +50,6 @@ mouseRight	open file in native app
 
 ### Future plans, pending features & issues
 
-* optimizations for touch devices, such as lightbox and zoom
-
 * search / index via menu
 
 * support for djvu

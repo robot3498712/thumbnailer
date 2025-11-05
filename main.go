@@ -52,6 +52,9 @@ var (
 	//go:embed style.css
 	cssContent string
 
+	//go:embed thumbnailer.ico
+	favicon []byte
+
 	cfg Config
 	mu sync.Mutex
 	fileInfos []FileInfo
@@ -799,6 +802,10 @@ func main() {
 	cssHidden := ""
 	if !cfg.lsd || dcnt < 2 { cssHidden = " hidden" }
 
+	http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Write(favicon)
+	})
 	http.HandleFunc("/thumbnail/", thumbnailHandler)
 	http.HandleFunc("/image/", imageHandler)
 	http.HandleFunc("/context/", contextHandler)
@@ -811,6 +818,7 @@ func main() {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>thumbnailer</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 <style type="text/css">%s</style>
 <script>%s</script>
 </head>
