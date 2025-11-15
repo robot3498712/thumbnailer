@@ -24,22 +24,22 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
 	"image"
-	_ "image/gif"
+	"image/draw"
 	"image/jpeg"
-	"image/png"
-
-	_ "golang.org/x/image/bmp"
-	_ "golang.org/x/image/webp"
+	"golang.org/x/image/bmp"
 
 	"github.com/gen2brain/go-fitz"
-	"github.com/gen2brain/avif"
-	"github.com/nfnt/resize"
-	"github.com/strukturag/libheif-go"
+
+	"thumbnailer/vips"
+)
+
+const (
+	// file smaller than 10kb is served as is
+	thumbMinSize = 10240
 )
 
 var (
@@ -59,12 +59,9 @@ var (
 	mu sync.Mutex
 	fileInfos []FileInfo
 	fileFormats = []string{
-		"jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "pdf", "epub", "mobi", "azw3",
+		"jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "svg", "tiff", "jp2", "jxl", "pdf", "epub", "mobi", "azw3",
 	}
-
-	// garbage collector: more frequent memory release
-	gc atomic.Bool
-	gcRequestCounter uint32
+	vipsJpegO = &vips.JpegsaveBufferOptions{ Q: 85, }
 )
 
 type Config struct {
@@ -226,8 +223,7 @@ _eoflat:
 	return dcnt, nil
 }
 
-func getEpubCoverImage(imagePath string) (image.Image, error) {
-	var img image.Image
+func getEpubCoverImage(fp string) ([]byte, error) {
 	var coverImageHref string
 
 	var opf  EpubOPF
@@ -236,7 +232,7 @@ func getEpubCoverImage(imagePath string) (image.Image, error) {
 	var opfFile        *zip.File
 	var coverImageFile *zip.File
 
-	hepubf, err := os.Open(imagePath)
+	hepubf, err := os.Open(fp)
 	if err != nil {
 		return nil, err
 	}
@@ -348,20 +344,46 @@ func getEpubCoverImage(imagePath string) (image.Image, error) {
 	}
 	defer hcif.Close()
 
-	img, _, err = image.Decode(hcif)
+	imgBuf, err := ioutil.ReadAll(hcif)
 	if err != nil {
 		return nil, err
 	}
 
-	return img, nil
+	return imgBuf, nil
 }
 
-func getFitzDocImage(imagePath string, imageID int) (image.Image, error) {
+func getVipsPdfImage(pdfPath string, imageID int) ([]byte, error) {
+	var img *vips.Image
+
+	opts := vips.DefaultPdfloadOptions()
+	opts.Page = 0
+
+	img, err := vips.NewPdfload(pdfPath, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer img.Close()
+
+	loadopts := &vips.ThumbnailImageOptions{ Height: 5000, }
+	err = img.ThumbnailImage(int(cfg.width), loadopts)
+	if err != nil {
+		return nil, err
+	}
+
+	thumbnailBuf, err := img.JpegsaveBuffer(vipsJpegO)
+	if err != nil {
+		return nil, err
+	}
+
+	return thumbnailBuf, nil
+}
+
+func getFitzDocImage(fp string, imageID int) ([]byte, error) {
 	var img image.Image
 
 	// https://github.com/gen2brain/go-fitz/issues/4
 	// locking all doc. ops is required
-	doc, err := fitz.New(imagePath)
+	doc, err := fitz.New(fp)
 	if err != nil {
 		return nil, err
 	}
@@ -417,10 +439,24 @@ func getFitzDocImage(imagePath string, imageID int) (image.Image, error) {
 		}
 	}
 
-	return img, nil
+	bounds := img.Bounds()
+	rgba := image.NewRGBA(bounds)
+	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
+
+	vi, _ := vips.NewImageFromMemory(rgba.Pix, bounds.Dx(), bounds.Dy(), 4)
+	defer vi.Close()
+
+	buf, _ := vi.JpegsaveBuffer(vipsJpegO)
+
+	thumbnailBuf, err := getVipsFromBuffer(buf, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return thumbnailBuf, nil
 }
 
-func getKindleCoverImage(imagePath string) (image.Image, error) {
+func getKindleCoverImage(fp string) ([]byte, error) {
 	var (
 		jpegStart = []byte{0xFF, 0xD8, 0xFF}
 		jpegEnd   = []byte{0xFF, 0xD9}
@@ -428,7 +464,7 @@ func getKindleCoverImage(imagePath string) (image.Image, error) {
 		pngEnd    = []byte{0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82}
 	)
 
-	data, err := ioutil.ReadFile(imagePath)
+	data, err := ioutil.ReadFile(fp)
 	if err != nil {
 		return nil, err
 	}
@@ -464,8 +500,7 @@ func getKindleCoverImage(imagePath string) (image.Image, error) {
 	pngImages := extractImage(pngStart, pngEnd)
 
 	var images [][]byte
-	var imgBytes []byte
-	var img image.Image
+	var imgBuf []byte
 
 	images = append(images, jpegImages...)
 	images = append(images, pngImages...)
@@ -473,91 +508,224 @@ func getKindleCoverImage(imagePath string) (image.Image, error) {
 	// naive approach for the time being
 	for _, bytval := range images {   // extract first image of size
 		if len(bytval) >= 50 * 1024 { // 50kb or larger
-			imgBytes = bytval
+			imgBuf = bytval
 			break
 		}
 	}
 
-	if len(imgBytes) == 0 { // largest otherwise
+	if len(imgBuf) == 0 { // largest otherwise
 		for _, bytval := range images {
-			if len(bytval) > len(imgBytes) {
-				imgBytes = bytval
+			if len(bytval) > len(imgBuf) {
+				imgBuf = bytval
 			}
 		}
 	}
 
-	if len(imgBytes) > 0 {
-		if bytes.HasPrefix(imgBytes, jpegStart) {
-			img, _ = jpeg.Decode(bytes.NewReader(imgBytes))
-		} else if bytes.HasPrefix(imgBytes, pngStart) {
-			img, _ = png.Decode(bytes.NewReader(imgBytes))
-		}
-
-		if img != nil {
-			return img, nil
-		}
+	if len(imgBuf) > 0 {
+		return imgBuf, nil
 	}
 
 	return nil, errors.New("404")
 }
 
-func generateThumbnail(imageID int) (image.Image, error) {
-	imagePath := fileInfos[imageID].Path
+func getVipsFromFile(fp string, resize bool) ([]byte, string, error) {
+	var jmp bool = false
 
-	var img image.Image
-	var thumbnail image.Image
-
-	ext := strings.ToLower(filepath.Ext(imagePath))
-
-	switch ext {
-	case ".azw3": // consider similar for .mobi
-		img, err := getKindleCoverImage(imagePath)
-		if err != nil {
-			return nil, err
-		}
-		thumbnail = resize.Resize(cfg.width, 0, img, resize.Lanczos3)
-	case ".epub":
-		img, err := getEpubCoverImage(imagePath)
-		if err != nil {
-			img, err = getFitzDocImage(imagePath, imageID)
+_Init:
+	if !jmp {
+		fi, _ := os.Stat(fp)
+		if fi.Size() < thumbMinSize {
+			var ct string = ""
+			img, err := vips.NewImageFromFile(fp, nil)
 			if err != nil {
-				return nil, err
+				return nil, ct, err
 			}
-		}
-		thumbnail = resize.Resize(cfg.width, 0, img, resize.Lanczos3)
-	case ".pdf", ".mobi":
-		img, err := getFitzDocImage(imagePath, imageID)
-		if err != nil {
-			return nil, err
-		}
-		thumbnail = resize.Resize(cfg.width, 0, img, resize.Lanczos3)
-	default:
-		file, err := os.Open(imagePath)
-		if err != nil {
-			return nil, err
-		}
-		defer file.Close()
+			defer img.Close()
 
-		if ext == ".avif" {
-			img, err = avif.Decode(file)
-			if err != nil {
-				return nil, err
+			// handle special cases
+			switch img.Format() {
+				case "svg":
+					ct = "image/svg+xml"
+				case "jxl":
+					jmp = true
+					resize = true
+					goto _Init
+				case "jp2k", "tiff", "heif":
+					jmp = true
+					resize = false
+					goto _Init
+				default:
 			}
-		} else {
-			img, _, err = image.Decode(file)
-			if err != nil {
-				return nil, err
-			}
-		}
 
-		if (uint(img.Bounds().Dx()) > (cfg.width * 2)) {
-			thumbnail = resize.Resize(cfg.width, 0, img, resize.Lanczos3)
-		} else {
-			thumbnail = img
+			buf, err := os.ReadFile(fp)
+			if err != nil {
+				return nil, ct, err
+			}
+			return buf, ct, nil
 		}
 	}
 
-	return thumbnail, nil
+	if resize {
+		loadopts := &vips.ThumbnailOptions{ Height: 5000, }
+		img, err := vips.NewThumbnail(fp, int(cfg.width), loadopts)
+		if err != nil {
+			return nil, "", err
+		}
+		defer img.Close()
+
+		if img.Format() == "svg" {
+			buf, _ := os.ReadFile(fp)
+			return buf, "image/svg+xml", nil
+		}
+
+		thumbnailBuf, err := img.JpegsaveBuffer(vipsJpegO)
+		if err != nil {
+			return nil, "", err
+		}
+
+		return thumbnailBuf, "", nil
+	}
+
+	// sequential | https://www.libvips.org/API/8.17/enum.Access.html
+	loadopts := &vips.LoadOptions{ Access: 1, }
+	img, err := vips.NewImageFromFile(fp, loadopts)
+	if err != nil {
+		return nil, "", err
+	}
+	defer img.Close()
+
+	if img.Format() == "svg" {
+		buf, _ := os.ReadFile(fp)
+		return buf, "image/svg+xml", nil
+	}
+
+	thumbnailBuf, err := img.JpegsaveBuffer(vipsJpegO)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return thumbnailBuf, "", nil
+}
+
+func getVipsFromBuffer(buf []byte, resize bool) ([]byte, error) {
+
+	if len(buf) < thumbMinSize {
+		return buf, nil
+	}
+
+	if resize {
+		loadopts := &vips.ThumbnailBufferOptions{ Height: 5000, }
+		img, err := vips.NewThumbnailBuffer(buf, int(cfg.width), loadopts)
+		if err != nil {
+			return nil, err
+		}
+		defer img.Close()
+
+		thumbnailBuf, err := img.JpegsaveBuffer(vipsJpegO)
+		if err != nil {
+			return nil, err
+		}
+
+		return thumbnailBuf, nil
+	}
+
+	img, err := vips.NewImageFromBuffer(buf, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer img.Close()
+
+	thumbnailBuf, err := img.JpegsaveBuffer(vipsJpegO)
+	if err != nil {
+		return nil, err
+	}
+
+	return thumbnailBuf, nil
+}
+
+func generateThumbnail(imageID int) ([]byte, string, error) {
+	fp := fileInfos[imageID].Path
+	ext := strings.ToLower(filepath.Ext(fp))
+
+	var thumbnailBuf []byte
+	var ct string = "image/jpeg"
+
+	switch ext {
+	case ".azw3": // consider similar for .mobi
+		buf, err := getKindleCoverImage(fp)
+		if err != nil {
+			return nil, ct, err
+		}
+		thumbnailBuf, err = getVipsFromBuffer(buf, true)
+		if err != nil {
+			return nil, ct, err
+		}
+
+	case ".epub":
+		buf, err := getEpubCoverImage(fp)
+		if err != nil {
+			thumbnailBuf, err = getFitzDocImage(fp, imageID)
+			if err != nil {
+				return nil, ct, err
+			} else {
+				return thumbnailBuf, ct, nil
+			}
+		}
+		thumbnailBuf, err = getVipsFromBuffer(buf, true)
+		if err != nil {
+			return nil, ct, err
+		}
+
+	case ".mobi":
+		var err error
+		thumbnailBuf, err = getFitzDocImage(fp, imageID)
+		if err != nil {
+			return nil, ct, err
+		}
+
+	case ".pdf":
+		var err error
+		thumbnailBuf, err = getVipsPdfImage(fp, imageID)
+		if err != nil {
+			return nil, ct, err
+		}
+
+	// workarounds go here
+	// bmp: unknown issue with vips or bindings
+	case ".bmp":
+		buf, err := os.ReadFile(fp)
+		if err != nil {
+			return nil, ct, err
+		}
+
+		fi, _ := os.Stat(fp)
+		if fi.Size() < thumbMinSize {
+			return thumbnailBuf, "image/bmp", nil
+		}
+
+		imgBmp, err := bmp.Decode(bytes.NewReader(buf))
+		if err != nil {
+			return nil, ct, err
+		}
+
+		var _buf bytes.Buffer
+		if err := jpeg.Encode(&_buf, imgBmp, &jpeg.Options{Quality: 100}); err != nil {
+			return nil, ct, err
+		}
+		thumbnailBuf, err = getVipsFromBuffer(_buf.Bytes(), true)
+		if err != nil {
+			return nil, ct, err
+		}
+
+	default:
+		var err error
+		thumbnailBuf, ct, err = getVipsFromFile(fp, true)
+		if err != nil {
+			return nil, ct, err
+		}
+	}
+
+	return thumbnailBuf, ct, nil
 }
 
 func open(url string) error {
@@ -620,12 +788,13 @@ func contextHandler(w http.ResponseWriter, r *http.Request) {
 
 func imageHandler(w http.ResponseWriter, r *http.Request) {
 	imageID, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/image/"))
-	imagePath := fileInfos[imageID].Path
+	fp := fileInfos[imageID].Path
 
 	// the default mode is trusting the file extension and serving the image as is
 	// if the browser detects a load error then a single retry is attempted
 	// ex. heic file.png won't be working per default
 	var img image.Image
+	var imgBuf []byte
 	var file *os.File
 	var err error
 	var retryImage bool
@@ -638,25 +807,46 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 _Ext:
 	ext := ".pdf"
 	if !jump {
-		ext = strings.ToLower(filepath.Ext(imagePath))
+		ext = strings.ToLower(filepath.Ext(fp))
 	}
 
 	switch ext {
 	case ".epub":
-		img, err = getEpubCoverImage(imagePath)
+		imgBuf, err = getEpubCoverImage(fp)
 		if err != nil { // retry via fitz
 			jump = true
 			goto _Ext
 		}
+
 	case ".azw3":
-		img, err = getKindleCoverImage(imagePath)
+		imgBuf, err = getKindleCoverImage(fp)
 		if err != nil {
 			http.Error(w, "Unable to extract image: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-	case ".pdf", ".mobi":
-		// see generateThumbnail()
-		doc, err := fitz.New(imagePath)
+
+	case ".pdf":
+		var vi *vips.Image
+
+		opts := vips.DefaultPdfloadOptions()
+		opts.Page = fileInfos[imageID].cPage
+		opts.Dpi = 144
+
+		vi, err := vips.NewPdfload(fp, opts)
+		if err != nil {
+			http.Error(w, "Unable to open document: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer vi.Close()
+
+		imgBuf, err = vi.JpegsaveBuffer(vipsJpegO)
+		if err != nil {
+			http.Error(w, "Unable to extract image: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+	case ".mobi":
+		doc, err := fitz.New(fp)
 		if err != nil {
 			http.Error(w, "Unable to open document: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -675,21 +865,27 @@ _Ext:
 			http.Error(w, "Unable to extract image: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 	default: // image
-		file, err = os.Open(imagePath)
-		if err != nil {
-			http.Error(w, "Unable to open image: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer file.Close()
 		if retryImage {
-			img, _, err = image.Decode(file)
+			imgBuf, _, err = getVipsFromFile(fp, false)
+			if err != nil {
+				http.Error(w, "Unable to serve image: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			file, err = os.Open(fp)
+			if err != nil {
+				http.Error(w, "Unable to open image: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer file.Close()
 		}
 	}
 
 	// content type is determined by the browser, but we set it anyway
 	switch ext {
-	case ".jpg", ".jpeg", ".pdf", ".epub", ".mobi", ".azw3":
+	case ".jpg", ".jpeg", ".heic", ".jp2", ".jxl", ".pdf", ".epub", ".mobi", ".azw3":
 		w.Header().Set("Content-Type", "image/jpeg")
 	case ".png":
 		w.Header().Set("Content-Type", "image/png")
@@ -701,17 +897,18 @@ _Ext:
 		w.Header().Set("Content-Type", "image/webp")
 	case ".avif":
 		w.Header().Set("Content-Type", "image/avif")
-	case ".heic":
-		if !retryImage {
-			img, _, err = image.Decode(file)
-		}
-		w.Header().Set("Content-Type", "image/jpeg")
+	case ".svg":
+		w.Header().Set("Content-Type", "image/svg+xml")
+	case ".tiff":
+		w.Header().Set("Content-Type", "image/tiff")
 	default:
 		http.Error(w, "Unsupported image format", http.StatusUnsupportedMediaType)
 	}
 
 	if img != nil {
 		jpeg.Encode(w, img, nil)
+	} else if imgBuf != nil {
+		w.Write(imgBuf)
 	} else {
 		_, err = io.Copy(w, file)
 		if err != nil {
@@ -724,33 +921,14 @@ _Ext:
 func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	imageID, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/thumbnail/"))
 
-	thumbnail, err := generateThumbnail(imageID)
+	buf, ct, err := generateThumbnail(imageID)
 	if err != nil {
 		http.Error(w, "Unable to generate thumbnail: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// keep memory usage reasonable
-	defer func() {
-		gc.Store(true)
-		if atomic.AddUint32(&gcRequestCounter, 1) % 50 == 0 {
-			go runtime.GC()
-		}
-	}()
-
-	w.Header().Set("Content-Type", "image/jpeg")
-	jpeg.Encode(w, thumbnail, nil)
-}
-
-func startGCWatcher() {
-	ticker := time.NewTicker(time.Second * 10)
-	go func() {
-		for range ticker.C {
-			if gc.Swap(false) {
-				runtime.GC()
-			}
-		}
-	}()
+	w.Header().Set("Content-Type", ct)
+	w.Write(buf)
 }
 
 func main() {
@@ -774,21 +952,21 @@ func main() {
 	flag.BoolVar(&cfg.fit, "fit", true, "fit within viewport (vertical crop)")
 	flag.Parse()
 
+	// vips init
+	vips.Startup(&vips.Config{})
+	defer vips.Shutdown()
+
 	if cfg.version {
 		fmt.Println(version)
 		os.Exit(0)
 	}
 	if cfg.verbose {
-		_avif := "wasm"
-		if avif.Dynamic() == nil {
-			_avif = "shared"
-		}
 		fmt.Printf("thumbnailer: %v\n", version)
+		fmt.Println("libvips:", vips.Version)
 		fmt.Printf("FzVersion: %v\n", fitz.FzVersion)
-		fmt.Printf("libheif: %v\n", libheif.GetVersion())
-		fmt.Printf("libavif: %v\n", _avif)
 		os.Exit(0)
 	}
+
 	if cfg.width != 250 {
 		cssContent = strings.Replace(cssContent, "250px", fmt.Sprintf("%dpx", cfg.width), -1)
 	}
@@ -880,8 +1058,6 @@ func main() {
 		<-c
 		os.Exit(0)
 	}()
-
-	startGCWatcher()
 
 	fmt.Printf("Server running on http://%s:%d\nCtrl+c to exit\n", ip, cfg.port)
 	http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.ip, cfg.port), nil)

@@ -1,13 +1,15 @@
 # thumbnailer cli
 
-## [0.1.3] (2025-11-02)
+## [0.2.0] (2025-11-15)
 
-Localhosted web app for displaying thumbnails in a grid layout.
+Localhosted web app for displaying thumbnails in a grid layout. 
+
+Using https://github.com/libvips/libvips with https://github.com/cshum/vipsgen 
 
 
 ### Supported media formats
 
-* jpeg, png, gif, webp, bmp, heic, avif
+* jpeg, png, gif, webp, bmp, heic, avif, svg, tiff, jp2, jxl
 * epub, pdf
 * [basic via mupdf] mobi
 * [experimental] azw3
@@ -50,9 +52,19 @@ mouseRight	open file in native app
 
 ### Future plans, pending features & issues
 
-* search / index via menu
+* evaluate fitz/mupdf alternatives, such as custom lib for mobi
 
-* support for djvu
+* exception handling in edge cases
+	* vips.vipsgenThumbnailWithOptions
+
+* indexing stage with progress animation
+
+* refactor, especially conditional processing
+
+* search / index via menu
+	* by extension / format
+
+* support for djvu, raw image
 
 * caching flag
 	* for example using sqlite
@@ -64,7 +76,7 @@ mouseRight	open file in native app
 
 * color scheme; day/night mode
 
-* [postponed] mobi/pdf: suppress error, warning and notice spam via mupdf lib
+* [postponed] mobi: suppress error, warning and notice spam via mupdf lib
 	* https://pkg.go.dev/github.com/gen2brain/go-fitz#section-readme
 
 * [postponed] mobi appears to always miss the cover image
