@@ -33,6 +33,7 @@ import (
 	"golang.org/x/image/bmp"
 
 	"github.com/gen2brain/go-fitz"
+	"github.com/briandowns/spinner"
 
 	"thumbnailer/vips"
 )
@@ -129,13 +130,15 @@ func normExt(path string) string {
 	return ext
 }
 
-func walkDir(root string) (uint, error) {
+func walkDir(root string, d chan struct{}) (uint, error) {
 	var (
 		walk    func(string) error
 		idx     int = -1
 		dcnt    uint = 0
 		modTime int64
 	)
+
+	defer close(d)
 	walk = func(path string) error {
 		dirEntries, err := os.ReadDir(path)
 		if err != nil {
@@ -931,6 +934,21 @@ func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf)
 }
 
+func spin(d <-chan struct{}) {
+	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+
+	// cursor tuning
+	fmt.Print("\033[?25l")
+	defer func() {
+		fmt.Print("\033[?25h")
+		s.Stop()
+	}()
+
+	s.Suffix = " Indexing"
+	s.Start()
+	<-d
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough arguments. Provide a search path.")
@@ -972,9 +990,25 @@ func main() {
 	}
 	if cfg.flat { cfg.lsd = false }
 
-	dcnt, err := walkDir(os.Args[len(os.Args)-1])
-	if err != nil {
-		fmt.Printf("%v\n", err)
+	// spin while indexing
+	   d := make(chan struct{})
+	 res := make(chan uint)
+	errc := make(chan error, 1)
+	var dcnt uint
+
+	go func() {
+		dcnt, err := walkDir(os.Args[len(os.Args)-1], d)
+		if err != nil {
+			errc <- err
+		}
+		res <- dcnt
+	}()
+
+	spin(d)
+	select {
+		case dcnt = <-res:
+		case err := <-errc:
+			fmt.Println(err)
 	}
 
 	cssHidden := ""
