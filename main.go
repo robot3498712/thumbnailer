@@ -808,7 +808,9 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 _Ext:
-	ext := ".pdf"
+	// tbd refactor; this implements fitz retry in a confusing fashion
+	//   at present fitz logic is in the .mobi case, and if no image (textual only), then .epub is redirected there
+	ext := ".mobi"
 	if !jump {
 		ext = strings.ToLower(filepath.Ext(fp))
 	}
