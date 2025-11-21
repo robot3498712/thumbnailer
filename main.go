@@ -35,6 +35,7 @@ import (
 	"github.com/gen2brain/go-fitz"
 	"github.com/briandowns/spinner"
 
+	mobi "thumbnailer/go-mobi"
 	"thumbnailer/vips"
 )
 
@@ -60,7 +61,7 @@ var (
 	mu sync.Mutex
 	fileInfos []FileInfo
 	fileFormats = []string{
-		"jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "svg", "tiff", "jp2", "jxl", "pdf", "epub", "mobi", "azw3",
+		"jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "svg", "tiff", "jp2", "jxl", "pdf", "epub", "mobi", "azw3", "azw", "azw4", "pdb", "prc",
 	}
 	vipsJpegO = &vips.JpegsaveBufferOptions{ Q: 85, }
 )
@@ -459,6 +460,22 @@ func getFitzDocImage(fp string, imageID int) ([]byte, error) {
 	return thumbnailBuf, nil
 }
 
+func getMobiCoverImage(fp string) ([]byte, error) {
+	m, err := mobi.Open(fp)
+	if err != nil {
+		return nil, err
+	}
+	defer m.Close()
+
+	buf, _, err := m.Cover()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+/*// deprecated: pending removal
 func getKindleCoverImage(fp string) ([]byte, error) {
 	var (
 		jpegStart = []byte{0xFF, 0xD8, 0xFF}
@@ -529,7 +546,7 @@ func getKindleCoverImage(fp string) ([]byte, error) {
 	}
 
 	return nil, errors.New("404")
-}
+}*/
 
 func getVipsFromFile(fp string, resize bool) ([]byte, string, error) {
 	var jmp bool = false
@@ -654,16 +671,6 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 	var ct string = "image/jpeg"
 
 	switch ext {
-	case ".azw3": // consider similar for .mobi
-		buf, err := getKindleCoverImage(fp)
-		if err != nil {
-			return nil, ct, err
-		}
-		thumbnailBuf, err = getVipsFromBuffer(buf, true)
-		if err != nil {
-			return nil, ct, err
-		}
-
 	case ".epub":
 		buf, err := getEpubCoverImage(fp)
 		if err != nil {
@@ -679,9 +686,17 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 			return nil, ct, err
 		}
 
-	case ".mobi":
-		var err error
-		thumbnailBuf, err = getFitzDocImage(fp, imageID)
+	case ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc":
+		buf, err := getMobiCoverImage(fp)
+		if err != nil {
+			thumbnailBuf, err = getFitzDocImage(fp, imageID)
+			if err != nil {
+				return nil, ct, err
+			} else {
+				return thumbnailBuf, ct, nil
+			}
+		}
+		thumbnailBuf, err = getVipsFromBuffer(buf, true)
 		if err != nil {
 			return nil, ct, err
 		}
@@ -807,10 +822,9 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 		retryImage = true
 	}
 
-_Ext:
-	// tbd refactor; this implements fitz retry in a confusing fashion
-	//   at present fitz logic is in the .mobi case, and if no image (textual only), then .epub is redirected there
-	ext := ".mobi"
+_Init:
+	// fitz retry, such as no image (textual only) in epub, via case redirect
+	ext := ".__fz__"
 	if !jump {
 		ext = strings.ToLower(filepath.Ext(fp))
 	}
@@ -818,16 +832,16 @@ _Ext:
 	switch ext {
 	case ".epub":
 		imgBuf, err = getEpubCoverImage(fp)
-		if err != nil { // retry via fitz
+		if err != nil { // fz retry
 			jump = true
-			goto _Ext
+			goto _Init
 		}
 
-	case ".azw3":
-		imgBuf, err = getKindleCoverImage(fp)
-		if err != nil {
-			http.Error(w, "Unable to extract image: "+err.Error(), http.StatusInternalServerError)
-			return
+	case ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc":
+		imgBuf, err = getMobiCoverImage(fp)
+		if err != nil { // fz retry
+			jump = true
+			goto _Init
 		}
 
 	case ".pdf":
@@ -850,7 +864,7 @@ _Ext:
 			return
 		}
 
-	case ".mobi":
+	case ".__fz__":
 		doc, err := fitz.New(fp)
 		if err != nil {
 			http.Error(w, "Unable to open document: "+err.Error(), http.StatusInternalServerError)
@@ -890,7 +904,7 @@ _Ext:
 
 	// content type is determined by the browser, but we set it anyway
 	switch ext {
-	case ".jpg", ".jpeg", ".heic", ".jp2", ".jxl", ".pdf", ".epub", ".mobi", ".azw3":
+	case ".__fz__", ".jpg", ".jpeg", ".heic", ".jp2", ".jxl", ".pdf", ".epub", ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc":
 		w.Header().Set("Content-Type", "image/jpeg")
 	case ".png":
 		w.Header().Set("Content-Type", "image/png")

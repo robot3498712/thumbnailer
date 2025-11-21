@@ -1,18 +1,18 @@
 # thumbnailer cli
 
-## [0.2.0] (2025-11-15)
+## [0.2.1] (2025-11-21)
 
 Localhosted web app for displaying thumbnails in a grid layout. 
 
 Using https://github.com/libvips/libvips with https://github.com/cshum/vipsgen 
+and https://github.com/bfabiszewski/libmobi for Mobipocket/Kindle
 
 
 ### Supported media formats
 
 * jpeg, png, gif, webp, bmp, heic, avif, svg, tiff, jp2, jxl
-* epub, pdf
-* [basic via mupdf] mobi
-* [experimental] azw3
+* pdf, epub, mobi, azw3
+* [untested] azw, azw4, pdb, prc
 
 
 ### Manual
@@ -52,13 +52,6 @@ mouseRight	open file in native app
 
 ### Future plans, pending features & issues
 
-* evaluate fitz/mupdf alternatives, such as custom lib for mobi
-
-* exception handling in edge cases
-	* vips.vipsgenThumbnailWithOptions
-
-* indexing stage with progress animation
-
 * refactor, especially conditional processing
 
 * search / index via menu
@@ -75,16 +68,6 @@ mouseRight	open file in native app
 * consider config defaults for ip:port and such
 
 * color scheme; day/night mode
-
-* [postponed] mobi: suppress error, warning and notice spam via mupdf lib
-	* https://pkg.go.dev/github.com/gen2brain/go-fitz#section-readme
-
-* [postponed] mobi appears to always miss the cover image
-	* https://en.wikipedia.org/wiki/Comparison_of_e-book_formats#Microsoft_LIT
-
-* [postponed] better support for Kindle formats (azw3)
-	* https://github.com/kevinhendricks/KindleUnpack
-	* https://stackoverflow.com/questions/5379565/kindle-periodical-format
 
 
 ### License
