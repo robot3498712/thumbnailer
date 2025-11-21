@@ -8,7 +8,7 @@ include the modules as needed (as of writing, "vips-modules-8.17" subfolder)
 ```
 
 
-## avif support
+## vips: avif support
 
 ```
 compile custom libheif with dav1d decoder via vcpkg
@@ -65,10 +65,29 @@ vcpkg install dav1d:x64-windows
 vcpkg install libheif:x64-windows --editable
 ```
 
-## produce go bindings
+## vips: produce go bindings
 
 ```
 follow instructions via https://github.com/cshum/vipsgen and output to vips directory
+```
+
+
+## libmobi (minimal; nodeps)
+
+```
+git clone https://github.com/bfabiszewski/libmobi.git
+cd libmobi && ./autogen.sh
+CFLAGS="-O2 -s" LDFLAGS="-s" ./configure --prefix="/{PATH_TO}/libmobi" --disable-encryption --with-zlib=no --with-libxml2=no && make -j$(nproc)
+
+strip --strip-all libmobi.dll
+copy libmobi.dll to thumbnailer directory
+```
+
+### libmobi: go bindings
+
+```
+copy source files into thumbnailer/go-mobi/vendor/libmobi/src
+copy libmobi.dll.a into thumbnailer/go-mobi/vendor/libmobi/lib
 ```
 
 
@@ -77,8 +96,8 @@ follow instructions via https://github.com/cshum/vipsgen and output to vips dire
 ```
 windres thumbnailer.rc -O coff -o thumbnailer.syso
 
-export CGO_CFLAGS="-O2 -s -L/{PATH_TO}/vips-dev-8.17/lib"
-export CGO_LDFLAGS="-O2 -s -L/{PATH_TO}/vips-dev-8.17/lib""
+export CGO_CFLAGS="-O2 -I/{PATH_TO}/vips-dev-8.17/lib"
+export CGO_LDFLAGS="-O2 -L/{PATH_TO}/vips-dev-8.17/lib""
 
 go build -ldflags="-s -w"
 
