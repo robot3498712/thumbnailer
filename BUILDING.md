@@ -99,7 +99,7 @@ windres thumbnailer.rc -O coff -o thumbnailer.syso
 export CGO_CFLAGS="-O2 -I/{PATH_TO}/vips-dev-8.17/lib"
 export CGO_LDFLAGS="-O2 -L/{PATH_TO}/vips-dev-8.17/lib""
 
-go build -ldflags="-s -w"
+go build -trimpath -ldflags="-s -w"
 
 
 # check via thumbnailer -vv

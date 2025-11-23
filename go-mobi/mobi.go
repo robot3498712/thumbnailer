@@ -49,3 +49,8 @@ func (m *Mobi) Close() {
 		m.doc = nil
 	}
 }
+
+func Version () string {
+	v := C.mobi_version()
+	return C.GoString(v)
+}

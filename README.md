@@ -69,6 +69,14 @@ mouseRight	open file in native app
 
 * color scheme; day/night mode
 
+* [performance] vlarge payload may benefit from progressive loading (streaming)
+	* alternatively consider efficient container for defined maxSize attribute
+
+* ui option, such as luart [ in a custom repo ]
+	* ideally bi-directional IPC with dynamic updates
+
+* [postponed] resolve bmp workaround
+
 
 ### License
 

@@ -475,79 +475,6 @@ func getMobiCoverImage(fp string) ([]byte, error) {
 	return buf, nil
 }
 
-/*// deprecated: pending removal
-func getKindleCoverImage(fp string) ([]byte, error) {
-	var (
-		jpegStart = []byte{0xFF, 0xD8, 0xFF}
-		jpegEnd   = []byte{0xFF, 0xD9}
-		pngStart  = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
-		pngEnd    = []byte{0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82}
-	)
-
-	data, err := ioutil.ReadFile(fp)
-	if err != nil {
-		return nil, err
-	}
-
-	extractImage := func(startSignature, endSignature []byte) [][]byte {
-		var images [][]byte
-		startPos := 0
-
-		for startPos < len(data) {
-			startPosRel := bytes.Index(data[startPos:], startSignature)
-			if startPosRel == -1 {
-				break
-			}
-			startPos = startPos + startPosRel + len(startSignature)
-
-			endPosRel := bytes.Index(data[startPos:], endSignature)
-			if endPosRel == -1 {
-				break
-			}
-			endPos := startPos + endPosRel + len(endSignature)
-
-			image := data[startPos-len(startSignature):endPos]
-			if len(image) > 0 {
-				images = append(images, image)
-			}
-
-			startPos = endPos
-		}
-		return images
-	}
-
-	jpegImages := extractImage(jpegStart, jpegEnd)
-	pngImages := extractImage(pngStart, pngEnd)
-
-	var images [][]byte
-	var imgBuf []byte
-
-	images = append(images, jpegImages...)
-	images = append(images, pngImages...)
-
-	// naive approach for the time being
-	for _, bytval := range images {   // extract first image of size
-		if len(bytval) >= 50 * 1024 { // 50kb or larger
-			imgBuf = bytval
-			break
-		}
-	}
-
-	if len(imgBuf) == 0 { // largest otherwise
-		for _, bytval := range images {
-			if len(bytval) > len(imgBuf) {
-				imgBuf = bytval
-			}
-		}
-	}
-
-	if len(imgBuf) > 0 {
-		return imgBuf, nil
-	}
-
-	return nil, errors.New("404")
-}*/
-
 func getVipsFromFile(fp string, resize bool) ([]byte, string, error) {
 	var jmp bool = false
 
@@ -811,7 +738,6 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 	// the default mode is trusting the file extension and serving the image as is
 	// if the browser detects a load error then a single retry is attempted
 	// ex. heic file.png won't be working per default
-	var img image.Image
 	var imgBuf []byte
 	var file *os.File
 	var err error
@@ -878,8 +804,21 @@ _Init:
 		}()
 
 		mu.Lock()
-		img, err = doc.Image(fileInfos[imageID].cPage)
+		img, err := doc.Image(fileInfos[imageID].cPage)
 		mu.Unlock()
+		if err != nil {
+			http.Error(w, "Unable to extract image: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		bounds := img.Bounds()
+		rgba := image.NewRGBA(bounds)
+		draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
+
+		vi, _ := vips.NewImageFromMemory(rgba.Pix, bounds.Dx(), bounds.Dy(), 4)
+		defer vi.Close()
+
+		imgBuf, err = vi.JpegsaveBuffer(vipsJpegO)
 		if err != nil {
 			http.Error(w, "Unable to extract image: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -924,9 +863,7 @@ _Init:
 		http.Error(w, "Unsupported image format", http.StatusUnsupportedMediaType)
 	}
 
-	if img != nil {
-		jpeg.Encode(w, img, nil)
-	} else if imgBuf != nil {
+	if imgBuf != nil {
 		w.Write(imgBuf)
 	} else {
 		_, err = io.Copy(w, file)
@@ -972,6 +909,7 @@ func main() {
 	}
 
 	flag.BoolVar(&cfg.cd, "cd", false, "current directory only (no recursion)")
+	flag.BoolVar(&cfg.fit, "fit", true, "fit within viewport (vertical crop)")
 	flag.BoolVar(&cfg.flat, "f", false, "flatten directory tree")
 	flag.StringVar(&cfg.ip, "i", "localhost", "bind ip; empty string \"\" for all")
 	flag.BoolVar(&cfg.lsd, "lsd", true, "list all directories (including empty)")
@@ -983,7 +921,6 @@ func main() {
 	flag.BoolVar(&cfg.version, "v", false, "print version")
 	flag.BoolVar(&cfg.verbose, "vv", false, "debug print version")
 	flag.UintVar(&cfg.width, "w", 250, "thumbnail width in pixels")
-	flag.BoolVar(&cfg.fit, "fit", true, "fit within viewport (vertical crop)")
 	flag.Parse()
 
 	// vips init
@@ -997,6 +934,7 @@ func main() {
 	if cfg.verbose {
 		fmt.Printf("thumbnailer: %v\n", version)
 		fmt.Println("libvips:", vips.Version)
+		fmt.Println("libmobi:", mobi.Version())
 		fmt.Printf("FzVersion: %v\n", fitz.FzVersion)
 		os.Exit(0)
 	}
