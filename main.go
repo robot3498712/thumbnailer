@@ -198,8 +198,12 @@ func walkDir(root string, d chan struct{}) (uint, error) {
 			}
 		}
 		return nil
-	}
+	} // end walk()
 
+
+	if inf, err := os.Stat(root); err != nil || !inf.IsDir() {
+		return 0, errors.New("invalid path (not a directory)")
+	}
 	if err := walk(root); err != nil {
 		return 0, err
 	}
@@ -951,9 +955,15 @@ func main() {
 	var dcnt uint
 
 	go func() {
-		dcnt, err := walkDir(os.Args[len(os.Args)-1], d)
+		p, err := filepath.Abs(os.Args[len(os.Args)-1])
 		if err != nil {
 			errc <- err
+			return
+		}
+		dcnt, err := walkDir(p, d)
+		if err != nil {
+			errc <- err
+			return
 		}
 		res <- dcnt
 	}()
@@ -963,6 +973,7 @@ func main() {
 		case dcnt = <-res:
 		case err := <-errc:
 			fmt.Println(err)
+			os.Exit(1)
 	}
 
 	cssHidden := ""
