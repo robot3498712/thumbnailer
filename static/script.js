@@ -3,6 +3,14 @@
  */
 
 document.addEventListener("DOMContentLoaded", ev => {
+	const scheme = localStorage.getItem("scheme");
+	if (scheme) {
+		if (scheme == "light") document.body.classList.add("light");
+		else document.body.classList.remove("light");
+	} else {
+		if (window.matchMedia("(prefers-color-scheme: light)").matches) document.body.classList.add("light");
+		else document.body.classList.remove("light");
+	}
 
 	const dWidth = document.body.dataset.width;
 	const dFit = document.body.dataset.fit == "true";
@@ -26,9 +34,9 @@ document.addEventListener("DOMContentLoaded", ev => {
 	// transformers
 	let rot = [];
 	let scale = 1;
-	const scaleStep = 0.1;
-	const minScale = 0.5;
-	const maxScale = 5;
+	const scaleStep = 0.33;
+	const minScale = 0.25;
+	const maxScale = 10;
 
 	let translateX = 0;
 	let translateY = 0;
@@ -83,23 +91,13 @@ document.addEventListener("DOMContentLoaded", ev => {
 			// implements vertical crop with fadeout
 			// img.naturalHeight may be incorrect for some payloads (like avif source)
 			if (dFit && img.getBoundingClientRect().height > maxHeight) {
-				container.style.height = `${maxHeight}px`;
-				container.style.overflow = 'hidden';
-				container.style.position = 'relative';
-
-				let fade = document.createElement('div');
-				fade.className = 'fadeout';
-				Object.assign(fade.style, {
-					position: 'absolute',
-					left: 0,
-					right: 0,
-					bottom: 0,
-					height: '50%',
-					background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1))',
-					mixBlendMode: 'destination-out',
-					pointerEvents: 'none'
+				Object.assign(container.style, {
+					height: `${maxHeight}px`,
+					overflow: 'hidden',
+					position: 'relative',
+					WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+					maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)'
 				});
-				container.appendChild(fade);
 			}
 		}
 		observer.unobserve(entry.target);
@@ -396,6 +394,11 @@ document.addEventListener("DOMContentLoaded", ev => {
 	lightbox.addEventListener("mouseleave", () => {
 		lastMouseX = 0;
 		lastMouseY = 0;
+	});
+
+	document.getElementById("btn-mode").addEventListener("click", e => {
+		let result = document.body.classList.toggle("light");
+		localStorage.scheme = result ? "light" : "dark";
 	});
 
 	// menu

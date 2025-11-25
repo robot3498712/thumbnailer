@@ -1,6 +1,26 @@
 /* https://www.figma.com/colors/jet-black/ */
-body {
-    background-color: #252525;
+:root {
+	--color: #ccc;
+	--bg-color: #252525;
+	--highlight-color: #555;
+	--border-color: #262c2a;
+}
+.light {
+	--color: #252525;
+	--bg-color: #ece7e0;
+	--highlight-color: #f2f4f5;
+	--border-color: #dfdcd6;
+}
+@media (prefers-color-scheme: light) {
+	--color: #252525;
+	--bg-color: #ece7e0;
+	--highlight-color: #f2f4f5;
+	--border-color: #dfdcd6;
+}
+
+body, .light {
+    background-color: var(--bg-color);
+    color: var(--color);
 	font-family: "Lucida Console", "Courier New", monospace;
 	font-size: min(3vw, 14px);
 }
@@ -24,8 +44,8 @@ div.dir-container {
 /* Menu */
 .menu {
 	font-size: 14px;
-	background-color: #252525;
-	color: #ccc;
+	background-color: var(--bg-color);
+	color: var(--color);
 	padding: 10px;
 	cursor: pointer;
 	width: 50px;
@@ -39,7 +59,7 @@ div.dir-container {
 }
 .menu-list {
 	display: none;
-	background-color: #252525;
+	background-color: var(--bg-color);
 	padding: 10px;
 	list-style-type: none;
 	margin-top: 0px;
@@ -54,10 +74,10 @@ div.dir-container {
 .menu-list li {
 	padding: 5px;
 	cursor: pointer;
-	color: #ccc;
+	color: var(--color);
 }
 .menu-list li:hover {
-	background-color: #555;
+	background-color: var(--highlight-color);
 }
 .menu-overlay {
 	display: none;
@@ -76,8 +96,8 @@ ul.stretch {
 	padding: 0px;
 }
 ul.stretch li {
-	color: #ccc;
-    background-color: #252525;
+	color: var(--color);
+    background-color: var(--bg-color);
     padding: 1px;
     display: flex;
     justify-content: left;
@@ -92,9 +112,9 @@ ul.flex {
     list-style: none;
 }
 ul.flex li {
-    background-color: #252525;
+    background-color: var(--bg-color);
     padding: 1px;
-    border: 1px solid #7d7d7d;
+    border: 1px solid var(--border-color);
     display: flex;
     justify-content: center;
     align-items: flex-start;
@@ -148,4 +168,31 @@ ul.flex li img {
 	top: 50%;
 	left: 50%;
 	transform: translate(-50%, -50%);
+}
+
+/* misc. */
+#btn-top, #btn-mode {
+	opacity: 0.5;
+	position: fixed;
+	bottom: 20px;
+	right: 20px;
+	width: 30px;
+	height: 30px;
+	z-index: 997;
+	background: url('btn-top.png') no-repeat 0 0;
+	border-radius: 5px;
+}
+#btn-mode {
+	right: 60px;
+	background: url('btn-mode.png') no-repeat 0 0;
+	cursor: pointer;
+}
+.btn-top, .btn-mode {
+	background-color: transparent;
+	display: inline-block;
+	width: 100%;
+	height: 100%;
+}
+#btn-top:hover, #btn-mode:hover {
+	opacity: 1;
 }

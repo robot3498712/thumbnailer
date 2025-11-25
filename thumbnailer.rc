@@ -1,2 +1,2 @@
 // thumbnailer.rc
-1 ICON "thumbnailer.ico"
+1 ICON "static/favicon.ico"

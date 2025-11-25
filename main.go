@@ -48,13 +48,19 @@ var (
 	//go:embed version.txt
 	version string
 
-	//go:embed script.js
+	//go:embed static/script.js
 	jsContent string
 
-	//go:embed style.css
+	//go:embed static/style.css
 	cssContent string
 
-	//go:embed thumbnailer.ico
+	//go:embed static/btn-top.png
+	btnTop []byte
+
+	//go:embed static/btn-mode.png
+	btnMode []byte
+
+	//go:embed static/favicon.ico
 	favicon []byte
 
 	cfg Config
@@ -983,6 +989,15 @@ func main() {
 		w.Header().Set("Content-Type", "image/x-icon")
 		w.Write(favicon)
 	})
+	http.HandleFunc("/btn-mode.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(btnMode)
+	})
+	http.HandleFunc("/btn-top.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(btnTop)
+	})
+
 	http.HandleFunc("/thumbnail/", thumbnailHandler)
 	http.HandleFunc("/image/", imageHandler)
 	http.HandleFunc("/context/", contextHandler)
@@ -1008,6 +1023,8 @@ func main() {
 	<div id="lightboxLoading"><p>Loading...</p></div>
 	<img id="lightboxImage" src="" />
 </div>
+<div id="btn-top"><a href="#" class="btn-top"></a></div>
+<div id="btn-mode"><a href="javascript:void(0)"></a></div>
 `, cssContent, jsContent, cfg.width, cfg.fit, cssHidden)
 		w.Write([]byte(htmlContent))
 
