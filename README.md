@@ -1,6 +1,6 @@
 # thumbnailer cli
 
-## [0.2.1] (2025-11-21)
+## [0.2.2] (2025-11-26)
 
 Localhosted web app for displaying thumbnails in a grid layout. 
 
@@ -13,6 +13,12 @@ and https://github.com/bfabiszewski/libmobi for Mobipocket/Kindle
 * jpeg, png, gif, webp, bmp, heic, avif, svg, tiff, jp2, jxl
 * pdf, epub, mobi, azw3
 * [untested] azw, azw4, pdb, prc
+
+
+### Module notes
+
+ImageMagick (vips-magick < libMagickCore) is required for formats without a dedicated loader (such as bmp). 
+Refer to https://github.com/libvips/libvips/blob/master/libvips/foreign/magickload.c
 
 
 ### Manual
@@ -67,15 +73,11 @@ mouseRight	open file in native app
 
 * consider config defaults for ip:port and such
 
-* color scheme; day/night mode
-
 * [performance] vlarge payload may benefit from progressive loading (streaming)
 	* alternatively consider efficient container for defined maxSize attribute
 
 * ui option, such as luart [ in a custom repo ]
 	* ideally bi-directional IPC with dynamic updates
-
-* [postponed] resolve bmp workaround
 
 
 ### License

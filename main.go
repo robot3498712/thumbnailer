@@ -3,7 +3,6 @@ package main
 import (
 	_ "embed"
 	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -29,8 +28,6 @@ import (
 
 	"image"
 	"image/draw"
-	"image/jpeg"
-	"golang.org/x/image/bmp"
 
 	"github.com/gen2brain/go-fitz"
 	"github.com/briandowns/spinner"
@@ -74,6 +71,7 @@ var (
 
 type Config struct {
 	cd		bool
+	fit		bool
 	flat    bool
 	ip      string
 	lsd     bool
@@ -82,10 +80,9 @@ type Config struct {
 	sa      bool
 	sd      bool
 	sh      bool
-	version bool
 	verbose bool
+	version bool
 	width   uint
-	fit		bool
 }
 
 type ContextData struct {
@@ -614,9 +611,8 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 			thumbnailBuf, err = getFitzDocImage(fp, imageID)
 			if err != nil {
 				return nil, ct, err
-			} else {
-				return thumbnailBuf, ct, nil
 			}
+			return thumbnailBuf, ct, nil
 		}
 		thumbnailBuf, err = getVipsFromBuffer(buf, true)
 		if err != nil {
@@ -629,9 +625,8 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 			thumbnailBuf, err = getFitzDocImage(fp, imageID)
 			if err != nil {
 				return nil, ct, err
-			} else {
-				return thumbnailBuf, ct, nil
-			}
+			} 
+			return thumbnailBuf, ct, nil
 		}
 		thumbnailBuf, err = getVipsFromBuffer(buf, true)
 		if err != nil {
@@ -641,33 +636,6 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 	case ".pdf":
 		var err error
 		thumbnailBuf, err = getVipsPdfImage(fp, imageID)
-		if err != nil {
-			return nil, ct, err
-		}
-
-	// workarounds go here
-	// bmp: unknown issue with vips or bindings
-	case ".bmp":
-		buf, err := os.ReadFile(fp)
-		if err != nil {
-			return nil, ct, err
-		}
-
-		fi, _ := os.Stat(fp)
-		if fi.Size() < thumbMinSize {
-			return thumbnailBuf, "image/bmp", nil
-		}
-
-		imgBmp, err := bmp.Decode(bytes.NewReader(buf))
-		if err != nil {
-			return nil, ct, err
-		}
-
-		var _buf bytes.Buffer
-		if err := jpeg.Encode(&_buf, imgBmp, &jpeg.Options{Quality: 100}); err != nil {
-			return nil, ct, err
-		}
-		thumbnailBuf, err = getVipsFromBuffer(_buf.Bytes(), true)
 		if err != nil {
 			return nil, ct, err
 		}
@@ -915,7 +883,7 @@ func spin(d <-chan struct{}) {
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough arguments. Provide a search path.")
-		os.Exit(0)
+		os.Exit(1)
 	}
 
 	flag.BoolVar(&cfg.cd, "cd", false, "current directory only (no recursion)")
