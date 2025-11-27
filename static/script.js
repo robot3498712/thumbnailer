@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", ev => {
 	let rot = [];
 	let scale = 1;
 	const scaleStep = 0.33;
-	const minScale = 0.25;
+	const minScale = 1.00;
 	const maxScale = 10;
 
 	let translateX = 0;
@@ -114,37 +114,30 @@ document.addEventListener("DOMContentLoaded", ev => {
 		threshold: 0.1           // trigger when 10% of the image is in the viewport
 	});
 
-	const openLightbox = (imageSrc, imageID) => {
-		const img = new Image();
-		img.onload = () => {
-			transform(true, imageID);
+	const openLightbox = (imageID) => {
+		lightboxImage.removeAttribute('src');
+		lightboxImage.dataset.id = imageID;
 
-			void lightboxImage.offsetHeight; // force reflow before restore
-			lightboxImage.style.transition = lightboxImageTransition;
+		lightboxLoading.style.display = "block";
+		lightbox.style.display = 'flex';
 
+		transform(true, imageID);
+		lightboxImage.src = `/image/${imageID}`;
+	};
+
+	lightboxImage.onload = () => {
+		void lightboxImage.offsetHeight; // force re-flow
+		lightboxImage.style.transition = lightboxImageTransition;
+		lightboxLoading.style.display = "none";
+	};
+
+	lightboxImage.onerror = () => {
+		// implements a one-time retry, forcing server-side decode
+		if (lightboxImage.src.includes("retry=1")) {
 			lightboxLoading.style.display = "none";
-			lightboxImage.src = img.src;
-			lightboxImage.dataset.id = imageID;
-			lightbox.style.display = 'flex';
-		};
-		img.onerror = () => {
-			// implements a one-time retry, forcing server-side decode
-			if (lightboxImage.dataset.id == imageID) return;
-
-			fetch(`/image/${imageID}?retry=1`)
-			.then(response => {
-				lightboxImage.dataset.id = imageID;
-				if (!response.ok) throw new Error('Failed to load image');
-				return response.blob();
-			})
-			.then(imageBlob => {
-				openLightbox(URL.createObjectURL(imageBlob), imageID);
-			})
-			.catch(error => {
-				console.error("Fetch image -> Error:", error);
-			});
-		};
-		img.src = imageSrc;
+			return;
+		}
+		lightboxImage.src = `/image/${lightboxImage.dataset.id}?retry=1`;
 	};
 
 	// attach handlers
@@ -161,24 +154,7 @@ document.addEventListener("DOMContentLoaded", ev => {
 		// lightbox
 		img.parentNode.addEventListener('click', ev => {
 			ev.preventDefault();
-
-			lightboxImage.src = "";
-			lightboxLoading.style.display = "block";
-			lightbox.style.display = 'flex';
-
-			const imageID = img.getAttribute('data-id');
-			fetch(`/image/${imageID}`)
-			.then(response => {
-				if (!response.ok) throw new Error('Failed to load image');
-				return response.blob();
-			})
-			.then(imageBlob => {
-				openLightbox(URL.createObjectURL(imageBlob), imageID);
-			})
-			.catch(error => {
-				lightbox.style.display = 'none';
-				console.error("Fetch image -> Error:", error);
-			});
+			openLightbox(img.getAttribute('data-id'));
 		});
 
 		// right-click
@@ -248,17 +224,7 @@ document.addEventListener("DOMContentLoaded", ev => {
 		}
 
 		if (nextListItem) {
-			const nextImageID = nextListItem.querySelector("img").getAttribute("data-id");
-			const fullImageUrl = '/image/' + nextImageID;
-
-			lightboxImage.src = "";
-			lightboxLoading.style.display = "block";
-
-			fetch(fullImageUrl)
-			.then(response => response.blob())
-			.then(imageBlob => {
-				openLightbox(URL.createObjectURL(imageBlob), nextImageID);
-			});
+			openLightbox(nextListItem.querySelector("img").getAttribute("data-id"));
 		}
 	});
 

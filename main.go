@@ -1,14 +1,13 @@
 package main
 
 import (
-	_ "embed"
+	"embed"
 	"archive/zip"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -45,20 +44,8 @@ var (
 	//go:embed version.txt
 	version string
 
-	//go:embed static/script.js
-	jsContent string
-
-	//go:embed static/style.css
-	cssContent string
-
-	//go:embed static/btn-top.png
-	btnTop []byte
-
-	//go:embed static/btn-mode.png
-	btnMode []byte
-
-	//go:embed static/favicon.ico
-	favicon []byte
+	//go:embed static/*
+	staticFS embed.FS
 
 	cfg Config
 	mu sync.Mutex
@@ -717,7 +704,6 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 	// if the browser detects a load error then a single retry is attempted
 	// ex. heic file.png won't be working per default
 	var imgBuf []byte
-	var file *os.File
 	var err error
 	var retryImage bool
 	var jump bool
@@ -809,13 +795,6 @@ _Init:
 				http.Error(w, "Unable to serve image: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-		} else {
-			file, err = os.Open(fp)
-			if err != nil {
-				http.Error(w, "Unable to open image: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			defer file.Close()
 		}
 	}
 
@@ -844,11 +823,10 @@ _Init:
 	if imgBuf != nil {
 		w.Write(imgBuf)
 	} else {
-		_, err = io.Copy(w, file)
-		if err != nil {
-			http.Error(w, "Unable to serve image: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		http.ServeFile(w, r, fp)
 	}
 }
 
@@ -917,9 +895,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	if cfg.width != 250 {
-		cssContent = strings.Replace(cssContent, "250px", fmt.Sprintf("%dpx", cfg.width), -1)
-	}
 	if cfg.flat { cfg.lsd = false }
 
 	// spin while indexing
@@ -953,18 +928,7 @@ func main() {
 	cssHidden := ""
 	if !cfg.lsd || dcnt < 2 { cssHidden = " hidden" }
 
-	http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/x-icon")
-		w.Write(favicon)
-	})
-	http.HandleFunc("/btn-mode.png", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write(btnMode)
-	})
-	http.HandleFunc("/btn-top.png", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write(btnTop)
-	})
+	http.Handle("/static/", http.FileServer(http.FS(staticFS)))
 
 	http.HandleFunc("/thumbnail/", thumbnailHandler)
 	http.HandleFunc("/image/", imageHandler)
@@ -972,15 +936,19 @@ func main() {
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		htmlContent := fmt.Sprintf(`<!doctype html>
+		fmt.Fprintf(w, `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>thumbnailer</title>
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<style type="text/css">%s</style>
-<script>%s</script>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/script.js" defer></script>
+<style>:root { --tile-w: %dpx; }</style>
+`, cfg.width)
+
+		fmt.Fprintf(w, `
 </head>
 <body data-width="%d" data-fit="%t">
 <div class="menu%s" id="menu">&#9776;</div>
@@ -993,8 +961,7 @@ func main() {
 </div>
 <div id="btn-top"><a href="#" class="btn-top"></a></div>
 <div id="btn-mode"><a href="javascript:void(0)"></a></div>
-`, cssContent, jsContent, cfg.width, cfg.fit, cssHidden)
-		w.Write([]byte(htmlContent))
+`, cfg.width, cfg.fit, cssHidden)
 
 		first := true
 		var last bool
@@ -1002,31 +969,31 @@ func main() {
 		for _, fileInfo := range fileInfos {
 			if fileInfo.isImage {
 				if first {
-					w.Write([]byte(fmt.Sprintf("<ul class=\"flex\">")))
+					fmt.Fprint(w, `<ul class="flex">`)
 					first = false
 				} else if last != fileInfo.isImage {
-					w.Write([]byte(fmt.Sprintf("</ul><ul class=\"flex\">")))
+					fmt.Fprint(w, `</ul><ul class="flex">`)
 				}
 				last = fileInfo.isImage
 
 				if cfg.lsd {
-					w.Write([]byte(fmt.Sprintf("<li><img title=\"%s\" data-id=\"%d\" /><span class=\"name\">%s</span></li>", fileInfo.Name, fileInfo.ID, fileInfo.Name)))
+					fmt.Fprintf(w, `<li><img title="%s" data-id="%d" /><span class="name">%s</span></li>`, fileInfo.Name, fileInfo.ID, fileInfo.Name)
 				} else {
-					w.Write([]byte(fmt.Sprintf("<li><img title=\"%s\" data-id=\"%d\" /><span class=\"name\">%s</span></li>", fileInfo.Path, fileInfo.ID, fileInfo.Name)))
+					fmt.Fprintf(w, `<li><img title="%s" data-id="%d" /><span class="name">%s</span></li>`, fileInfo.Path, fileInfo.ID, fileInfo.Name)
 				}
 			} else if fileInfo.isDir && cfg.lsd {
 				if first {
-					w.Write([]byte(fmt.Sprintf("<ul class=\"stretch\">")))
+					fmt.Fprint(w, `<ul class="stretch">`)
 					first = false
 				} else if last != fileInfo.isImage {
-					w.Write([]byte(fmt.Sprintf("</ul><ul class=\"stretch\">")))
+					fmt.Fprint(w, `</ul><ul class="stretch">`)
 				}
 				last = fileInfo.isImage
 
-				w.Write([]byte(fmt.Sprintf("<li><div class=\"dir-container\" id=\"%d\"><span>%s</span></div></li>", fileInfo.ID, fileInfo.Path)))
+				fmt.Fprintf(w, `<li><div class="dir-container" id="%d"><span>%s</span></div></li>`, fileInfo.ID, fileInfo.Path)
 			}
 		}
-		w.Write([]byte("</ul></body></html>"))
+		fmt.Fprint(w, `</ul></body></html>`)
 	})
 
 	ip := cfg.ip
