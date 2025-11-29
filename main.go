@@ -956,7 +956,6 @@ func main() {
 <div class="menu-overlay" id="menuOverlay"></div>
 <div id="lightbox">
 	<div id="lightboxClose">&#x2716;</div>
-	<div id="lightboxLoading"><p>Loading...</p></div>
 	<img id="lightboxImage" src="" />
 </div>
 <div id="btn-top"><a href="#" class="btn-top"></a></div>

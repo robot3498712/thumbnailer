@@ -19,8 +19,6 @@ document.addEventListener("DOMContentLoaded", ev => {
     const images = document.querySelectorAll('ul.flex li img');
 	const lightbox = document.getElementById('lightbox');
 	const lightboxImage = document.getElementById('lightboxImage');
-	const lightboxImageTransition = lightboxImage.style.transition;
-	const lightboxLoading = document.getElementById('lightboxLoading');
 	const lightboxClose = document.getElementById('lightboxClose');
 
 	// touch device
@@ -115,26 +113,44 @@ document.addEventListener("DOMContentLoaded", ev => {
 	});
 
 	const openLightbox = (imageID) => {
-		lightboxImage.removeAttribute('src');
-		lightboxImage.dataset.id = imageID;
+		const showNewImage = () => {
+			lightboxImage.style.transition = 'none';
+			lightboxImage.style.opacity = 0;
 
-		lightboxLoading.style.display = "block";
-		lightbox.style.display = 'flex';
+			lightboxImage.removeAttribute('src');
+			lightboxImage.dataset.id = imageID;
 
-		transform(true, imageID);
-		lightboxImage.src = `/image/${imageID}`;
+			lightbox.style.display = 'flex';
+			transform(true, imageID);
+
+			void lightboxImage.offsetWidth; // force re-flow
+			lightboxImage.src = `/image/${imageID}`;
+
+			requestAnimationFrame(() => {
+				lightboxImage.style.transition = "";
+				lightboxImage.style.opacity = 1;
+			});
+		};
+
+		if (lightbox.style.display !== 'flex' || window.getComputedStyle(lightboxImage).opacity == 0) {
+			showNewImage();
+			return;
+		}
+		lightboxImage.style.opacity = 0;
+
+		lightboxImage.addEventListener('transitionend', function handler() {
+			lightboxImage.removeEventListener('transitionend', handler);
+			showNewImage();
+		}, { once: true });
 	};
 
 	lightboxImage.onload = () => {
 		void lightboxImage.offsetHeight; // force re-flow
-		lightboxImage.style.transition = lightboxImageTransition;
-		lightboxLoading.style.display = "none";
 	};
 
 	lightboxImage.onerror = () => {
 		// implements a one-time retry, forcing server-side decode
 		if (lightboxImage.src.includes("retry=1")) {
-			lightboxLoading.style.display = "none";
 			return;
 		}
 		lightboxImage.src = `/image/${lightboxImage.dataset.id}?retry=1`;
