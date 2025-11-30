@@ -38,6 +38,9 @@ import (
 const (
 	// file smaller than 10kb is served as is
 	thumbMinSize = 10240
+
+	// resize trigger
+	resizeMinMpx = 14.7
 )
 
 var (
@@ -56,6 +59,18 @@ var (
 	vipsJpegO = &vips.JpegsaveBufferOptions{ Q: 85, }
 )
 
+// refer to resize trigger in imageHandler()
+var Presets = map[string]Preset{
+	"none": {enabled: false, width: 0},
+	"hd":   {enabled: true,  width: 1920},
+	"4k":   {enabled: true,  width: 3840},
+}
+
+type Preset struct {
+	enabled bool
+	width   int
+}
+
 type Config struct {
 	cd		bool
 	fit		bool
@@ -64,6 +79,8 @@ type Config struct {
 	lsd     bool
 	open	bool
 	port    uint
+	pstr    string
+	resize  Preset
 	sa      bool
 	sd      bool
 	sh      bool
@@ -82,6 +99,7 @@ type FileInfo struct {
 	ID      int
 	cPage   int
 	modTime	int64
+	mpx    float64
 	Path    string
 	Name    string
 }
@@ -350,7 +368,7 @@ func getEpubCoverImage(fp string) ([]byte, error) {
 	return imgBuf, nil
 }
 
-func getVipsPdfImage(pdfPath string, imageID int) ([]byte, error) {
+func getVipsPdfImage(pdfPath string, id int) ([]byte, error) {
 	var img *vips.Image
 
 	opts := vips.DefaultPdfloadOptions()
@@ -376,7 +394,7 @@ func getVipsPdfImage(pdfPath string, imageID int) ([]byte, error) {
 	return thumbnailBuf, nil
 }
 
-func getFitzDocImage(fp string, imageID int) ([]byte, error) {
+func getFitzDocImage(fp string, id int) ([]byte, error) {
 	var img image.Image
 
 	// https://github.com/gen2brain/go-fitz/issues/4
@@ -410,7 +428,7 @@ func getFitzDocImage(fp string, imageID int) ([]byte, error) {
 				if err != nil {
 					return nil, err
 				}
-				fileInfos[imageID].cPage = p
+				fileInfos[id].cPage = p
 				break
 			}
 
@@ -469,76 +487,52 @@ func getMobiCoverImage(fp string) ([]byte, error) {
 	return buf, nil
 }
 
-func getVipsFromFile(fp string, resize bool) ([]byte, string, error) {
-	var jmp bool = false
+func getVipsFromFile(fp string, id int, width int) ([]byte, string, error) {
+	// peek
+	_img, err := vips.NewImageFromFile(fp, nil)
+	if err != nil {
+		return nil, "", err
+	}
 
-_Init:
-	if !jmp {
-		fi, _ := os.Stat(fp)
-		if fi.Size() < thumbMinSize {
-			var ct string = ""
-			img, err := vips.NewImageFromFile(fp, nil)
-			if err != nil {
-				return nil, ct, err
-			}
-			defer img.Close()
+	_width := _img.Width() 
+	    _f := _img.Format()
 
-			// handle special cases
-			switch img.Format() {
-				case "svg":
-					ct = "image/svg+xml"
-				case "jxl":
-					jmp = true
-					resize = true
-					goto _Init
-				case "jp2k", "tiff", "heif":
-					jmp = true
-					resize = false
-					goto _Init
-				default:
-			}
+	fileInfos[id].mpx = float64(_width * _img.Height()) / 1000000.0
+	_img.Close()
 
+	if _f == "svg" {
+		buf, _ := os.ReadFile(fp)
+		return buf, "image/svg+xml", nil
+	}
+
+	if width != 0 && _width <= width {
+		width = 0
+	}
+
+	fi, _ := os.Stat(fp)
+	if fi.Size() < thumbMinSize {
+		isComplex := (_f == "jxl" || _f == "jp2k" || _f == "tiff" || _f == "heif")
+		if !isComplex {
 			buf, err := os.ReadFile(fp)
-			if err != nil {
-				return nil, ct, err
-			}
-			return buf, ct, nil
+			return buf, "", err
 		}
 	}
 
-	if resize {
-		loadopts := &vips.ThumbnailOptions{ Height: 5000, }
-		img, err := vips.NewThumbnail(fp, int(cfg.width), loadopts)
-		if err != nil {
-			return nil, "", err
-		}
-		defer img.Close()
+	var img *vips.Image
 
-		if img.Format() == "svg" {
-			buf, _ := os.ReadFile(fp)
-			return buf, "image/svg+xml", nil
-		}
-
-		thumbnailBuf, err := img.JpegsaveBuffer(vipsJpegO)
-		if err != nil {
-			return nil, "", err
-		}
-
-		return thumbnailBuf, "", nil
+	if width > 0 {
+		loadopts := &vips.ThumbnailOptions{ Height: 5000 }
+		img, err = vips.NewThumbnail(fp, width, loadopts)
+	} else {
+		// sequential | https://www.libvips.org/API/8.17/enum.Access.html
+		loadopts := &vips.LoadOptions{ Access: 1 }
+		img, err = vips.NewImageFromFile(fp, loadopts)
 	}
 
-	// sequential | https://www.libvips.org/API/8.17/enum.Access.html
-	loadopts := &vips.LoadOptions{ Access: 1, }
-	img, err := vips.NewImageFromFile(fp, loadopts)
 	if err != nil {
 		return nil, "", err
 	}
 	defer img.Close()
-
-	if img.Format() == "svg" {
-		buf, _ := os.ReadFile(fp)
-		return buf, "image/svg+xml", nil
-	}
 
 	thumbnailBuf, err := img.JpegsaveBuffer(vipsJpegO)
 	if err != nil {
@@ -584,8 +578,8 @@ func getVipsFromBuffer(buf []byte, resize bool) ([]byte, error) {
 	return thumbnailBuf, nil
 }
 
-func generateThumbnail(imageID int) ([]byte, string, error) {
-	fp := fileInfos[imageID].Path
+func generateThumbnail(id int) ([]byte, string, error) {
+	fp := fileInfos[id].Path
 	ext := strings.ToLower(filepath.Ext(fp))
 
 	var thumbnailBuf []byte
@@ -595,7 +589,7 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 	case ".epub":
 		buf, err := getEpubCoverImage(fp)
 		if err != nil {
-			thumbnailBuf, err = getFitzDocImage(fp, imageID)
+			thumbnailBuf, err = getFitzDocImage(fp, id)
 			if err != nil {
 				return nil, ct, err
 			}
@@ -609,7 +603,7 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 	case ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc":
 		buf, err := getMobiCoverImage(fp)
 		if err != nil {
-			thumbnailBuf, err = getFitzDocImage(fp, imageID)
+			thumbnailBuf, err = getFitzDocImage(fp, id)
 			if err != nil {
 				return nil, ct, err
 			} 
@@ -622,14 +616,14 @@ func generateThumbnail(imageID int) ([]byte, string, error) {
 
 	case ".pdf":
 		var err error
-		thumbnailBuf, err = getVipsPdfImage(fp, imageID)
+		thumbnailBuf, err = getVipsPdfImage(fp, id)
 		if err != nil {
 			return nil, ct, err
 		}
 
 	default:
 		var err error
-		thumbnailBuf, ct, err = getVipsFromFile(fp, true)
+		thumbnailBuf, ct, err = getVipsFromFile(fp, id, int(cfg.width))
 		if err != nil {
 			return nil, ct, err
 		}
@@ -697,19 +691,20 @@ func contextHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func imageHandler(w http.ResponseWriter, r *http.Request) {
-	imageID, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/image/"))
-	fp := fileInfos[imageID].Path
+	id, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/image/"))
+	fp := fileInfos[id].Path
+	width := 0
 
 	// the default mode is trusting the file extension and serving the image as is
 	// if the browser detects a load error then a single retry is attempted
 	// ex. heic file.png won't be working per default
 	var imgBuf []byte
 	var err error
-	var retryImage bool
+	var retry bool
 	var jump bool
 
 	if r.URL.Query().Get("retry") != "" {
-		retryImage = true
+		retry = true
 	}
 
 _Init:
@@ -738,7 +733,7 @@ _Init:
 		var vi *vips.Image
 
 		opts := vips.DefaultPdfloadOptions()
-		opts.Page = fileInfos[imageID].cPage
+		opts.Page = fileInfos[id].cPage
 		opts.Dpi = 144
 
 		vi, err := vips.NewPdfload(fp, opts)
@@ -768,7 +763,7 @@ _Init:
 		}()
 
 		mu.Lock()
-		img, err := doc.Image(fileInfos[imageID].cPage)
+		img, err := doc.Image(fileInfos[id].cPage)
 		mu.Unlock()
 		if err != nil {
 			http.Error(w, "Unable to extract image: "+err.Error(), http.StatusInternalServerError)
@@ -789,8 +784,13 @@ _Init:
 		}
 
 	default: // image
-		if retryImage {
-			imgBuf, _, err = getVipsFromFile(fp, false)
+		if cfg.resize.enabled {
+			if fileInfos[id].mpx > resizeMinMpx {
+				width = cfg.resize.width
+			}
+		}
+		if width != 0 || retry {
+			imgBuf, _, err = getVipsFromFile(fp, id, width)
 			if err != nil {
 				http.Error(w, "Unable to serve image: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -831,9 +831,9 @@ _Init:
 }
 
 func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
-	imageID, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/thumbnail/"))
+	id, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/thumbnail/"))
 
-	buf, ct, err := generateThumbnail(imageID)
+	buf, ct, err := generateThumbnail(id)
 	if err != nil {
 		http.Error(w, "Unable to generate thumbnail: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -871,6 +871,7 @@ func main() {
 	flag.BoolVar(&cfg.lsd, "lsd", true, "list all directories (including empty)")
 	flag.BoolVar(&cfg.open, "o", false, "open webbrowser")
 	flag.UintVar(&cfg.port, "p", 8989, "bind port")
+	flag.StringVar(&cfg.pstr, "preset", "none", "resize preset: none, hd, 4k")
 	flag.BoolVar(&cfg.sa, "sa", false, "sort files by mod time asc")
 	flag.BoolVar(&cfg.sd, "sd", false, "sort files by mod time desc")
 	flag.BoolVar(&cfg.sh, "sh", false, "shuffle files")
@@ -878,6 +879,14 @@ func main() {
 	flag.BoolVar(&cfg.verbose, "vv", false, "debug print version")
 	flag.UintVar(&cfg.width, "w", 250, "thumbnail width in pixels")
 	flag.Parse()
+
+	p, ok := Presets[strings.ToLower(cfg.pstr)]
+	if !ok {
+		fmt.Printf("unknown preset: %s\n", cfg.pstr)
+		flag.Usage()
+		os.Exit(2)
+	}
+	cfg.resize = p
 
 	// vips init
 	vips.Startup(&vips.Config{})

@@ -160,13 +160,6 @@ ul.flex li img {
 	cursor: pointer;
 	z-index: 1001;
 }
-#lightboxLoading {
-	color: gray;
-	font-size: min(5vw, 24px);
-	position: absolute;
-	top: 10px;
-	left: 10px;
-}
 
 /* misc. */
 #btn-top, #btn-mode {

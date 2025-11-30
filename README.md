@@ -1,6 +1,6 @@
 # thumbnailer cli
 
-## [0.2.2] (2025-11-26)
+## [0.2.3] (2025-11-30)
 
 Localhosted web app for displaying thumbnails in a grid layout. 
 
@@ -56,6 +56,17 @@ mouseLeft	open image in new tab
 mouseRight	open file in native app
 ```
 
+#### Image Presets
+
+```
+none	the default, no resizing
+hd		target 1080p (~2 MP)
+4k		target 2160p (~8 MP)
+
+There is a performance trade-off, albeit for non-local client (mobile device) a recode might serve more efficiently.
+```
+
+
 ### Future plans, pending features & issues
 
 * refactor, especially conditional processing
@@ -72,9 +83,6 @@ mouseRight	open file in native app
 	* https://github.com/h2non/filetype.py
 
 * consider config defaults for ip:port and such
-
-* [performance] vlarge payload may benefit from progressive loading (streaming)
-	* alternatively consider efficient container for defined maxSize attribute
 
 * ui option, such as luart [ in a custom repo ]
 	* ideally bi-directional IPC with dynamic updates
