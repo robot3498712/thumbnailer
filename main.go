@@ -1019,12 +1019,12 @@ func main() {
 	go func() {
 		if cfg.open {
 			time.Sleep(250 * time.Millisecond)
-			open(fmt.Sprintf("http://%s:%d", cfg.ip, cfg.port))
+			open(fmt.Sprintf("http://%s", addr))
 		}
 		<-c
 		os.Exit(0)
 	}()
 
-	fmt.Printf("Server running on http://%s:%d\nCtrl+c to exit\n", cfg.ip, cfg.port)
+	fmt.Printf("Server running on http://%s\nCtrl+c to exit\n", addr)
 	http.Serve(ln, nil)
 }
