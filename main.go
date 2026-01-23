@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -99,7 +100,7 @@ type FileInfo struct {
 	ID      int
 	cPage   int
 	modTime	int64
-	mpx    float64
+	mpx     float64
 	Path    string
 	Name    string
 }
@@ -904,6 +905,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	if cfg.ip == "" { cfg.ip = "0.0.0.0" }
+	addr := fmt.Sprintf("%s:%d", cfg.ip, cfg.port)
+	// bind before indexing
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Print(err)
+		os.Exit(1)
+	}
+
 	if cfg.flat { cfg.lsd = false }
 
 	// spin while indexing
@@ -1004,20 +1014,17 @@ func main() {
 		fmt.Fprint(w, `</ul></body></html>`)
 	})
 
-	ip := cfg.ip
-	if cfg.ip == "" { ip = "localhost" }
-
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		if cfg.open {
 			time.Sleep(250 * time.Millisecond)
-			open(fmt.Sprintf("http://%s:%d", ip, cfg.port))
+			open(fmt.Sprintf("http://%s:%d", cfg.ip, cfg.port))
 		}
 		<-c
 		os.Exit(0)
 	}()
 
-	fmt.Printf("Server running on http://%s:%d\nCtrl+c to exit\n", ip, cfg.port)
-	http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.ip, cfg.port), nil)
+	fmt.Printf("Server running on http://%s:%d\nCtrl+c to exit\n", cfg.ip, cfg.port)
+	http.Serve(ln, nil)
 }
