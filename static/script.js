@@ -274,6 +274,7 @@ document.addEventListener("DOMContentLoaded", ev => {
 
 	lightbox.addEventListener("touchmove", ev => {
 		if (lightbox.style.display !== "flex") return;
+		ev.preventDefault();
 
 		if (ev.touches.length === 1 && isPanning) {
 			ev.preventDefault();
@@ -306,7 +307,7 @@ document.addEventListener("DOMContentLoaded", ev => {
 			transform(false, lightboxImage.dataset.id);
 			pinchStartDist = dist;
 		}
-	});
+	}, { passive: false });
 
 	lightbox.addEventListener("touchend", ev => {
 		if (scale <= 1 && ev.changedTouches.length === 1) { // swipe nav
