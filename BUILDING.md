@@ -4,7 +4,7 @@
 ```
 libvips and its dependencies cross-compiled for all supported Windows architectures: https://github.com/libvips/build-win64-mxe 
 extract dlls to thumbnailer directory
-include the modules as needed (as of writing, "vips-modules-8.17" subfolder)
+include the modules as needed (as of writing, "vips-modules-8.18" subfolder)
 ```
 
 
@@ -14,6 +14,7 @@ include the modules as needed (as of writing, "vips-modules-8.17" subfolder)
 compile custom libheif with dav1d decoder via vcpkg
 move/replace dlls in thumbnailer directory
 ```
+
 
 ### vcpkg: ports/libheif
 
@@ -62,13 +63,28 @@ vcpkg_cmake_configure(
 )
 
 vcpkg install dav1d:x64-windows
-vcpkg install libheif:x64-windows --editable
+vcpkg install libheif[core]:x64-windows --editable
 ```
+
 
 ## vips: produce go bindings
 
 ```
+Update the build env:
+
+go get -u ./...
+go mod tidy
+
+
+pkg-config --modversion vips
+
+pacman -Syu
+pacman -S mingw-w64-ucrt-x86_64-libvips
+```
+
+```
 follow instructions via https://github.com/cshum/vipsgen and output to vips directory
+typically the pre-generated latest library revision (./vips folder) will work
 ```
 
 
@@ -83,6 +99,7 @@ strip --strip-all libmobi.dll
 copy libmobi.dll to thumbnailer directory
 ```
 
+
 ### libmobi: go bindings
 
 ```
@@ -96,14 +113,14 @@ copy libmobi.dll.a into thumbnailer/go-mobi/vendor/libmobi/lib
 ```
 windres thumbnailer.rc -O coff -o thumbnailer.syso
 
-export CGO_CFLAGS="-O2 -I/{PATH_TO}/vips-dev-8.17/lib"
-export CGO_LDFLAGS="-O2 -L/{PATH_TO}/vips-dev-8.17/lib""
+export CGO_CFLAGS="-O2 -I/{PATH_TO}/vips-dev-8.18/lib"
+export CGO_LDFLAGS="-O2 -L/{PATH_TO}/vips-dev-8.18/lib""
 
 go build -trimpath -ldflags="-s -w"
 
 
 # check via thumbnailer -vv
-	thumbnailer: 0.2.0
-	libvips: 8.17.2
+	thumbnailer: 0.2.3
+	libvips: 8.18.0
 	FzVersion: 1.24.9
 ```

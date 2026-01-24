@@ -56,6 +56,7 @@ var (
 	fileInfos []FileInfo
 	fileFormats = []string{
 		"jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "svg", "tiff", "jp2", "jxl", "pdf", "epub", "mobi", "azw3", "azw", "azw4", "pdb", "prc",
+		"raw", "cr2", "cr3", "dng", "nrw", "nef", "orf", "rw2", "arw",
 	}
 	vipsJpegO = &vips.JpegsaveBufferOptions{ Q: 85, }
 )
@@ -811,7 +812,7 @@ _init:
 _switch:
 	// content type is determined by the browser, but we set it anyway
 	switch ext {
-	case ".__fz__", ".jpg", ".jpeg", ".heic", ".jp2", ".jxl", ".pdf", ".epub", ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc":
+	case ".__fz__", ".jpg", ".jpeg", ".heic", ".jp2", ".jxl", ".pdf", ".epub", ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc", ".raw", ".cr2", ".cr3", ".dng", ".nrw", ".nef", ".orf", ".rw2", ".arw":
 		w.Header().Set("Content-Type", "image/jpeg")
 	case ".png":
 		w.Header().Set("Content-Type", "image/png")

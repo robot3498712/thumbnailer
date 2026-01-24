@@ -1,10 +1,10 @@
 # thumbnailer cli
 
-## [0.2.3] (2025-11-30)
+## [0.2.4] (2026-01-24)
 
 Localhosted web app for displaying thumbnails in a grid layout. 
 
-Using https://github.com/libvips/libvips with https://github.com/cshum/vipsgen 
+Using https://github.com/libvips/libvips [8.18] with https://github.com/cshum/vipsgen 
 and https://github.com/bfabiszewski/libmobi for Mobipocket/Kindle
 
 
@@ -13,6 +13,7 @@ and https://github.com/bfabiszewski/libmobi for Mobipocket/Kindle
 * jpeg, png, gif, webp, bmp, heic, avif, svg, tiff, jp2, jxl
 * pdf, epub, mobi, azw3
 * [untested] azw, azw4, pdb, prc
+* [slow] raw image formats
 
 
 ### Module notes
@@ -74,7 +75,9 @@ There is a performance trade-off, albeit for non-local client (mobile device) a 
 * search / index via menu
 	* by extension / format
 
-* support for djvu, raw image
+* support for djvu
+
+* raw image handling: research improvements
 
 * caching flag
 	* for example using sqlite
