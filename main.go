@@ -488,42 +488,51 @@ func getMobiCoverImage(fp string) ([]byte, error) {
 	return buf, nil
 }
 
-func getVipsFromFile(fp string, id int, width int) ([]byte, string, error) {
+func getVipsFromFile(fp string, id int, thumbnail bool, resize bool) ([]byte, string, error) {
 	// peek
 	_img, err := vips.NewImageFromFile(fp, nil)
 	if err != nil {
 		return nil, "", err
 	}
 
-	_width := _img.Width() 
-	    _f := _img.Format()
+	w := _img.Width()
+	h := _img.Height()
+	f := _img.Format()
 
-	fileInfos[id].mpx = float64(_width * _img.Height()) / 1000000.0
+	if thumbnail { fileInfos[id].mpx = float64(w * h) / 1000000.0 }
 	_img.Close()
 
-	if _f == "svg" {
+	if f == "svg" {
 		buf, _ := os.ReadFile(fp)
 		return buf, "image/svg+xml", nil
 	}
 
-	if width != 0 && _width <= width {
-		width = 0
-	}
-
 	fi, _ := os.Stat(fp)
 	if fi.Size() < thumbMinSize {
-		isComplex := (_f == "jxl" || _f == "jp2k" || _f == "tiff" || _f == "heif")
+		isComplex := (f == "jxl" || f == "jp2k" || f == "tiff" || f == "heif")
 		if !isComplex {
 			buf, err := os.ReadFile(fp)
 			return buf, "", err
 		}
 	}
 
+	if thumbnail {
+		w = int(cfg.width)
+	} else if resize {
+		if (h > w) {
+			w = int(float64(cfg.resize.width) / float64(h) * float64(w))
+		} else {
+			w = cfg.resize.width
+		}
+	} else { // retry (without resize)
+		w = 0
+	}
+
 	var img *vips.Image
 
-	if width > 0 {
+	if w > 0 {
 		loadopts := &vips.ThumbnailOptions{ Height: 5000 }
-		img, err = vips.NewThumbnail(fp, width, loadopts)
+		img, err = vips.NewThumbnail(fp, w, loadopts)
 	} else {
 		// sequential | https://www.libvips.org/API/8.17/enum.Access.html
 		loadopts := &vips.LoadOptions{ Access: 1 }
@@ -624,7 +633,7 @@ func generateThumbnail(id int) ([]byte, string, error) {
 
 	default:
 		var err error
-		thumbnailBuf, ct, err = getVipsFromFile(fp, id, int(cfg.width))
+		thumbnailBuf, ct, err = getVipsFromFile(fp, id, true, false)
 		if err != nil {
 			return nil, ct, err
 		}
@@ -694,7 +703,6 @@ func contextHandler(w http.ResponseWriter, r *http.Request) {
 func imageHandler(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/image/"))
 	fp := fileInfos[id].Path
-	width := 0
 
 	// the default mode is trusting the file extension and serving the image as is
 	// if the browser detects a load error then a single retry is attempted
@@ -708,7 +716,7 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 		retry = true
 	}
 
-_Init:
+_init:
 	// fitz retry, such as no image (textual only) in epub, via case redirect
 	ext := ".__fz__"
 	if !jump {
@@ -720,14 +728,14 @@ _Init:
 		imgBuf, err = getEpubCoverImage(fp)
 		if err != nil { // fz retry
 			jump = true
-			goto _Init
+			goto _init
 		}
 
 	case ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc":
 		imgBuf, err = getMobiCoverImage(fp)
 		if err != nil { // fz retry
 			jump = true
-			goto _Init
+			goto _init
 		}
 
 	case ".pdf":
@@ -785,13 +793,14 @@ _Init:
 		}
 
 	default: // image
-		if cfg.resize.enabled {
+		if cfg.resize.enabled || retry {
 			if fileInfos[id].mpx > resizeMinMpx {
-				width = cfg.resize.width
+				imgBuf, _, err = getVipsFromFile(fp, id, false, true)
+			} else if retry {
+				imgBuf, _, err = getVipsFromFile(fp, id, false, false)
+			} else {
+				goto _switch
 			}
-		}
-		if width != 0 || retry {
-			imgBuf, _, err = getVipsFromFile(fp, id, width)
 			if err != nil {
 				http.Error(w, "Unable to serve image: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -799,6 +808,7 @@ _Init:
 		}
 	}
 
+_switch:
 	// content type is determined by the browser, but we set it anyway
 	switch ext {
 	case ".__fz__", ".jpg", ".jpeg", ".heic", ".jp2", ".jxl", ".pdf", ".epub", ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc":
