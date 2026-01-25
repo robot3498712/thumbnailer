@@ -18,7 +18,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,19 +53,73 @@ var (
 	cfg Config
 	mu sync.Mutex
 	fileInfos []FileInfo
-	fileFormats = []string{
-		"jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "svg", "tiff", "jp2", "jxl", "pdf", "epub", "mobi", "azw3", "azw", "azw4", "pdb", "prc",
-		"raw", "cr2", "cr3", "dng", "nrw", "nef", "orf", "rw2", "arw",
-	}
-	vipsJpegO = &vips.JpegsaveBufferOptions{ Q: 85, }
-)
 
-// refer to resize trigger in imageHandler()
-var Presets = map[string]Preset{
-	"none": {enabled: false, width: 0},
-	"hd":   {enabled: true,  width: 1920},
-	"4k":   {enabled: true,  width: 3840},
-}
+	fileFormats = map[string]string{
+		"avif": "img",
+		"bmp" : "img",
+		"gif" : "img",
+		"heic": "img",
+		"jp2" : "img",
+		"jpg" : "img",
+		"jpeg": "img",
+		"jxl" : "img",
+		"png" : "img",
+		"svg" : "img",
+		"tiff": "img",
+		"webp": "img",
+
+		"azw" : "doc",
+		"azw3": "doc",
+		"azw4": "doc",
+		"epub": "doc",
+		"mobi": "doc",
+		"pdb" : "doc",
+		"pdf" : "doc",
+		"prc" : "doc",
+
+		"3fr" : "raw",
+		"ari" : "raw",
+		"arw" : "raw",
+		"cap" : "raw",
+		"cin" : "raw",
+		"cr2" : "raw",
+		"cr3" : "raw",
+		"crw" : "raw",
+		"dcr" : "raw",
+		"dng" : "raw",
+		"erf" : "raw",
+		"fff" : "raw",
+		"iiq" : "raw",
+		"k25" : "raw",
+		"kdc" : "raw",
+		"mdc" : "raw",
+		"mos" : "raw",
+		"mrw" : "raw",
+		"nef" : "raw",
+		"nrw" : "raw",
+		"orf" : "raw",
+		"ori" : "raw",
+		"pef" : "raw",
+		"pxn" : "raw",
+		"raf" : "raw",
+		"raw" : "raw",
+		"rw2" : "raw",
+		"rwl" : "raw",
+		"sr2" : "raw",
+		"srf" : "raw",
+		"srw" : "raw",
+		"x3f" : "raw",
+	}
+
+	vipsJpegO = &vips.JpegsaveBufferOptions{ Q: 85, }
+
+	// refer to resize trigger in imageHandler()
+	Presets = map[string]Preset{
+		"none": {enabled: false, width: 0},
+		"hd"  : {enabled: true,  width: 1920},
+		"4k"  : {enabled: true,  width: 3840},
+	}
+)
 
 type Preset struct {
 	enabled bool
@@ -96,12 +149,12 @@ type ContextData struct {
 }
 
 type FileInfo struct {
-	isDir   bool
-	isImage bool /* refer to fileFormats */
+	isFile  bool
 	ID      int
 	cPage   int
 	modTime	int64
 	mpx     float64
+	cType	string
 	Path    string
 	Name    string
 }
@@ -162,17 +215,17 @@ func walkDir(root string, d chan struct{}) (uint, error) {
 			fullPath := filepath.Join(path, entry.Name())
 			if entry.IsDir() {
 				if !cfg.cd {
-					dirs = append(dirs, FileInfo{Path: fullPath, Name: "", isDir: true, isImage: false})
+					dirs = append(dirs, FileInfo{Path: fullPath, Name: "", isFile: false})
 				}
 			} else {
-				ext := normExt(fullPath)
-				if !slices.Contains(fileFormats, ext) { continue }
+				cType, ok := fileFormats[normExt(fullPath)]
+				if !ok { continue }
 
 				if cfg.sa || cfg.sd {
 					fi, _ := os.Stat(fullPath)
 					modTime = fi.ModTime().Unix()
 				}
-				files = append(files, FileInfo{Path: fullPath, Name: entry.Name(), isDir: false, isImage: true, cPage: 0, modTime: modTime})
+				files = append(files, FileInfo{Path: fullPath, Name: entry.Name(), isFile: true, cType: cType, cPage: 0, modTime: modTime})
 			}
 		}
 
@@ -190,7 +243,7 @@ func walkDir(root string, d chan struct{}) (uint, error) {
 			}
 			 idx++
 			dcnt++
-			fileInfos = append(fileInfos, FileInfo{ID: idx, Path: path, Name: "", isDir: true, isImage: false})
+			fileInfos = append(fileInfos, FileInfo{ID: idx, Path: path, Name: "", isFile: false})
 
 			for _, file := range files {
 				idx++
@@ -812,8 +865,6 @@ _init:
 _switch:
 	// content type is determined by the browser, but we set it anyway
 	switch ext {
-	case ".__fz__", ".jpg", ".jpeg", ".heic", ".jp2", ".jxl", ".pdf", ".epub", ".mobi", ".azw3", ".azw", ".azw4", ".pdb", ".prc", ".raw", ".cr2", ".cr3", ".dng", ".nrw", ".nef", ".orf", ".rw2", ".arw":
-		w.Header().Set("Content-Type", "image/jpeg")
 	case ".png":
 		w.Header().Set("Content-Type", "image/png")
 	case ".gif":
@@ -829,7 +880,7 @@ _switch:
 	case ".tiff":
 		w.Header().Set("Content-Type", "image/tiff")
 	default:
-		http.Error(w, "Unsupported image format", http.StatusUnsupportedMediaType)
+		w.Header().Set("Content-Type", "image/jpeg")
 	}
 
 	if imgBuf != nil {
@@ -995,31 +1046,31 @@ func main() {
 		first := true
 		var last bool
 
-		for _, fileInfo := range fileInfos {
-			if fileInfo.isImage {
+		for _, itm := range fileInfos {
+			if itm.isFile {
 				if first {
 					fmt.Fprint(w, `<ul class="flex">`)
 					first = false
-				} else if last != fileInfo.isImage {
+				} else if last != itm.isFile {
 					fmt.Fprint(w, `</ul><ul class="flex">`)
 				}
-				last = fileInfo.isImage
+				last = itm.isFile
 
 				if cfg.lsd {
-					fmt.Fprintf(w, `<li><img title="%s" data-id="%d" /><span class="name">%s</span></li>`, fileInfo.Name, fileInfo.ID, fileInfo.Name)
+					fmt.Fprintf(w, `<li><img title="%s" data-id="%d" data-ct="%s" /><span class="name">%s</span></li>`, itm.Name, itm.ID, itm.cType, itm.Name)
 				} else {
-					fmt.Fprintf(w, `<li><img title="%s" data-id="%d" /><span class="name">%s</span></li>`, fileInfo.Path, fileInfo.ID, fileInfo.Name)
+					fmt.Fprintf(w, `<li><img title="%s" data-id="%d" data-ct="%s" /><span class="name">%s</span></li>`, itm.Path, itm.ID, itm.cType, itm.Name)
 				}
-			} else if fileInfo.isDir && cfg.lsd {
+			} else if cfg.lsd {
 				if first {
 					fmt.Fprint(w, `<ul class="stretch">`)
 					first = false
-				} else if last != fileInfo.isImage {
+				} else if last != itm.isFile {
 					fmt.Fprint(w, `</ul><ul class="stretch">`)
 				}
-				last = fileInfo.isImage
+				last = itm.isFile
 
-				fmt.Fprintf(w, `<li><div class="dir-container" id="%d"><span>%s</span></div></li>`, fileInfo.ID, fileInfo.Path)
+				fmt.Fprintf(w, `<li><div class="dir-container" id="%d"><span>%s</span></div></li>`, itm.ID, itm.Path)
 			}
 		}
 		fmt.Fprint(w, `</ul></body></html>`)

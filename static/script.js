@@ -112,19 +112,19 @@ document.addEventListener("DOMContentLoaded", ev => {
 		threshold: 0.1           // trigger when 10% of the image is in the viewport
 	});
 
-	const openLightbox = (imageID) => {
+	const openLightbox = (img) => {
 		const showNewImage = () => {
 			lightboxImage.style.transition = 'none';
 			lightboxImage.style.opacity = 0;
 
 			lightboxImage.removeAttribute('src');
-			lightboxImage.dataset.id = imageID;
+			lightboxImage.dataset.id = img.dataset.id;
 
 			lightbox.style.display = 'flex';
-			transform(true, imageID);
+			transform(true, img.dataset.id);
 
 			void lightboxImage.offsetWidth; // force re-flow
-			lightboxImage.src = `/image/${imageID}`;
+			lightboxImage.src = `/image/${img.dataset.id}${(img.dataset.ct == "raw" ? "?retry=1" : "")}`;
 
 			requestAnimationFrame(() => {
 				lightboxImage.style.transition = "";
@@ -170,7 +170,7 @@ document.addEventListener("DOMContentLoaded", ev => {
 		// lightbox
 		img.parentNode.addEventListener('click', ev => {
 			ev.preventDefault();
-			openLightbox(img.getAttribute('data-id'));
+			openLightbox(img);
 		});
 
 		// right-click
@@ -240,7 +240,7 @@ document.addEventListener("DOMContentLoaded", ev => {
 		}
 
 		if (nextListItem) {
-			openLightbox(nextListItem.querySelector("img").getAttribute("data-id"));
+			openLightbox(nextListItem.querySelector("img"));
 		}
 	});
 

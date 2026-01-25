@@ -71,13 +71,12 @@ There is a performance trade-off, albeit for non-local client (mobile device) a 
 ### Future plans, pending features & issues
 
 * refactor, especially conditional processing
+	* see https://github.com/libvips/libvips/blob/master/libvips/foreign/dcrawload.c#L57 and other loaders for suffix enumerations
 
 * search / index via menu
 	* by extension / format
 
 * support for djvu
-
-* raw image handling: research improvements
 
 * caching flag
 	* for example using sqlite
@@ -86,6 +85,10 @@ There is a performance trade-off, albeit for non-local client (mobile device) a 
 	* https://github.com/h2non/filetype.py
 
 * consider config defaults for ip:port and such
+
+* raw image handling
+	* Most time is spent in dcraw, so performance isn't that much better than the previous solution with imagemagick.
+	* https://www.libvips.org/2025/12/04/What's-new-in-8.18.html
 
 * ui option, such as luart [ in a custom repo ]
 	* ideally bi-directional IPC with dynamic updates
